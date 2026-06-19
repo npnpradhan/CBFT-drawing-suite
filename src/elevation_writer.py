@@ -1,13 +1,13 @@
 """
 CBFT panel drawings beyond the cutting-list table:
-  1. Wall elevation view  — L × 2100 mm, with plates, studs, and X-brace
-  2. Flat-bar plan callout — thin cross-section at flat-bar height (plan view)
-  3. Bot-plate detail     — plate cross-section with dowel holes (R=16)
-  4. Top-plate detail     — plate cross-section with J-bolt holes (R=14)
+  1. Wall elevation view  — L × 2100 mm, plates, studs, X-brace, full dimensions
+  2. Flat-bar plan callout — thin cross-section with stud-spacing dimensions
+  3. Bot-plate detail     — plate cross-section with dowel holes
+  4. Top-plate detail     — plate cross-section with J-bolt holes
 
-Layout (all Y values absolute, not relative to origin):
-  Elevation view : placed to the RIGHT of the cutting-list table
-  Detail callouts: stacked above the cutting-list table
+Layout (matching the reference panel_1200A_detail.dxf): all four drawings are
+stacked VERTICALLY above the cutting-list table, horizontally centred on the
+table width.  Dimensions use real DXF DIMENSION entities with the DIM100 style.
 """
 from __future__ import annotations
 import math
@@ -15,41 +15,44 @@ from ezdxf.layouts import Modelspace
 
 from .cutting_rules import (
     PLATE_THICKNESS, PLATE_WIDTH, STUD_DIAMETER,
-    WALL_HEIGHT_TOTAL, STUD_HEIGHT, FLATBAR_H_TRIM, FLATBAR_W, FLATBAR_T,
+    WALL_HEIGHT_TOTAL, STUD_HEIGHT, FLATBAR_H_TRIM,
 )
 from .table_writer import (
-    TABLE_LEFT_X, TABLE_RIGHT_X, TABLE_TOP_Y,
-    TITLE_TOP_Y,
+    TABLE_LEFT_X, TABLE_RIGHT_X, TITLE_TOP_Y,
 )
 
 # ── Derived constants ─────────────────────────────────────────────────────────
-STUD_RADIUS = STUD_DIAMETER / 2      # 50 mm
+STUD_RADIUS  = STUD_DIAMETER / 2     # 50 mm
+TABLE_CX     = (TABLE_LEFT_X + TABLE_RIGHT_X) / 2   # horizontal centre of table
 
-# ── Layer names (matching reference files) ────────────────────────────────────
-_L_ELEV    = "0-S2"              # elevation outline
+# ── Layer names (registered by src/layers.setup_layers) ───────────────────────
+_L_ELEV    = "0-S2"              # elevation panel outline
 _L_VP      = "VP"               # outer callout box border
-_L_PLATE   = "AR-Timber Plate"  # plate rectangles
-_L_PANELS  = "AR-Panels"        # stud profiles + hole circles
+_L_PLATE   = "AR-Timber Plate"  # timber-plate rectangles
+_L_STUD    = "AR-Bamboo Stud"   # stud bodies
+_L_PANELS  = "AR-Panels"        # stud cross-section circles + hole circles
 _L_FLATBAR = "AR-Flatbar"       # flat bar / X-brace
-_L_LEADER  = "0-S1"             # leaders and flatbar anchor box
+_L_LEADER  = "0-S1"             # leaders and flat-bar anchor box
 _L_TEXT    = "A-Main Text"      # primary labels
 _L_SPEC    = "A-Specifications" # secondary annotations
 _L_DIM     = "A-DIMENSIONS"     # dimension lines
 _L_HATCH   = "A-Hatch"          # hatching
 
-# ── Elevation placement: to the right of the cutting-list table ───────────────
-ELEV_GAP_X   = 600   # gap between table right edge and elevation left edge
-ELEV_OFFSET_X = TABLE_RIGHT_X + ELEV_GAP_X   # start X for elevation drawing
+# ── Vertical stacking (absolute Y, above the title block top) ─────────────────
+_GAP_TITLE_ELEV = 300    # title-block top → elevation bottom
+_GAP_ELEV_FB    = 550    # elevation top   → flat-bar callout
+_GAP_FB_BP      = 700    # flat-bar callout → bot-plate detail
+_GAP_BP_TP      = 450    # bot-plate detail → top-plate detail
 
-# ── Detail callout placement: above the table ─────────────────────────────────
-_BOX_H          = 100    # outer callout box height
-_PLATE_MARGIN   = (_BOX_H - PLATE_WIDTH) / 2    # 6 mm centring margin
-_GAP_ABOVE_TABLE = 500   # gap from TITLE_TOP_Y to bottom of flatbar callout
-_GAP_FB_BP      = 350    # gap between flatbar callout and bot-plate detail
-_GAP_BP_TP      = 450    # gap between bot-plate and top-plate details
+# ── Dimension offsets ─────────────────────────────────────────────────────────
+_DIM_OFF_1 = 150    # first dimension line offset from the geometry
+_DIM_OFF_2 = 400    # overall dimension line offset
 
-# ── Text heights ──────────────────────────────────────────────────────────────
-_TH = 100
+# ── Callout box ───────────────────────────────────────────────────────────────
+_BOX_H        = 100
+_PLATE_MARGIN = (_BOX_H - PLATE_WIDTH) / 2   # 6 mm centring margin
+
+_TH = 100   # label text height
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -57,7 +60,7 @@ _TH = 100
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _stud_x_all(L: float, t1: int, t2: int) -> list[float]:
-    """X positions of all studs (T1 + T2), left to right, relative to panel left."""
+    """X of all studs (T1+T2), left→right, relative to panel left edge."""
     total = t1 + t2
     if total == 0:
         return []
@@ -73,27 +76,45 @@ def _stud_x_all(L: float, t1: int, t2: int) -> list[float]:
 
 
 def _t1_x(L: float) -> list[float]:
-    """X positions of the two end T1 studs."""
+    """X of the two end T1 studs (connection-hole positions)."""
     return [STUD_RADIUS, L - STUD_RADIUS]
 
 
-def _poly(msp: Modelspace, pts: list[tuple], closed: bool, layer: str) -> None:
+def _panel_left(L: float) -> float:
+    """Left edge X so the panel is centred on the table width."""
+    return TABLE_CX - L / 2
+
+
+def _poly(msp, pts, closed, layer):
     msp.add_lwpolyline(pts, close=closed, dxfattribs={"layer": layer})
 
 
-def _line(msp: Modelspace, p0: tuple, p1: tuple, layer: str) -> None:
+def _line(msp, p0, p1, layer):
     msp.add_line(p0, p1, dxfattribs={"layer": layer})
 
 
-def _circle(msp: Modelspace, cx: float, cy: float, r: float, layer: str) -> None:
+def _circle(msp, cx, cy, r, layer):
     msp.add_circle((cx, cy), r, dxfattribs={"layer": layer})
 
 
-def _filled_circle(msp: Modelspace, cx: float, cy: float, r: float,
-                   layer: str = _L_PANELS) -> None:
-    """Circle + SOLID hatch approximated as a 32-point polyline."""
+def _text(msp, s, x, y, layer=_L_TEXT, h=_TH):
+    msp.add_text(s, height=h, dxfattribs={"layer": layer, "insert": (x, y)})
+
+
+def _leader(msp, pts):
+    msp.add_leader(pts, dxfattribs={"layer": _L_LEADER})
+
+
+def _hatch_rect(msp, x, y, w, h, pattern="ANSI31", scale=25.0):
+    hatch = msp.add_hatch(dxfattribs={"layer": _L_HATCH})
+    hatch.set_pattern_fill(pattern, scale=scale)
+    hatch.paths.add_polyline_path(
+        [(x, y), (x + w, y), (x + w, y + h), (x, y + h)], is_closed=True)
+
+
+def _solid_circle(msp, cx, cy, r, layer):
     _circle(msp, cx, cy, r, layer)
-    n = 32
+    n = 24
     pts = [(cx + r * math.cos(2 * math.pi * i / n),
             cy + r * math.sin(2 * math.pi * i / n)) for i in range(n)]
     h = msp.add_hatch(dxfattribs={"layer": layer})
@@ -101,196 +122,164 @@ def _filled_circle(msp: Modelspace, cx: float, cy: float, r: float,
     h.paths.add_polyline_path(pts, is_closed=True)
 
 
-def _text(msp: Modelspace, s: str, x: float, y: float,
-          layer: str = _L_TEXT, h: float = _TH) -> None:
-    msp.add_text(s, dxfattribs={"layer": layer, "height": h, "insert": (x, y)})
+# ── Real DXF dimensions (DIM100 style) ────────────────────────────────────────
+
+def _hdim(msp, x1, x2, y_geom, y_dimline):
+    """Horizontal linear dimension between x1 and x2."""
+    dim = msp.add_linear_dim(
+        base=((x1 + x2) / 2, y_dimline),
+        p1=(x1, y_geom), p2=(x2, y_geom),
+        angle=0, dimstyle="DIM100",
+        dxfattribs={"layer": _L_DIM},
+    )
+    dim.render()
 
 
-def _leader(msp: Modelspace, pts: list[tuple]) -> None:
-    msp.add_leader(pts, dxfattribs={"layer": _L_LEADER})
+def _vdim(msp, y1, y2, x_geom, x_dimline):
+    """Vertical linear dimension between y1 and y2."""
+    dim = msp.add_linear_dim(
+        base=(x_dimline, (y1 + y2) / 2),
+        p1=(x_geom, y1), p2=(x_geom, y2),
+        angle=90, dimstyle="DIM100",
+        dxfattribs={"layer": _L_DIM},
+    )
+    dim.render()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  Full wall elevation view
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_elevation(msp: Modelspace, L: float,
-                    t1: int, t2: int,
-                    ox: float, oy: float) -> None:
-    """
-    Draw a 1:1 wall elevation of the panel at origin (ox, oy).
-
-    Shows: panel outline, timber plates (hatched), bamboo stud profiles
-    (rectangles + circles at plate cross-sections), flat-bar X-brace,
-    and dimension annotations.
-    """
+def _draw_elevation(msp, L, t1, t2, ox, oy):
+    """Draw a 1:1 wall elevation with plates, studs, X-brace and dimensions.
+    (ox, oy) = bottom-left corner of the panel."""
     H  = WALL_HEIGHT_TOTAL    # 2100
     tp = PLATE_THICKNESS      # 38
     sr = STUD_RADIUS          # 50
 
-    # ── Panel outline ─────────────────────────────────────────────────────────
-    _poly(msp, [(ox, oy), (ox+L, oy), (ox+L, oy+H), (ox, oy+H)],
+    # Panel outline
+    _poly(msp, [(ox, oy), (ox + L, oy), (ox + L, oy + H), (ox, oy + H)],
           closed=True, layer=_L_ELEV)
 
-    # ── Bottom timber plate (hatched) ─────────────────────────────────────────
-    _poly(msp, [(ox, oy), (ox+L, oy), (ox+L, oy+tp), (ox, oy+tp)],
+    # Bottom + top timber plates (hatched)
+    _poly(msp, [(ox, oy), (ox + L, oy), (ox + L, oy + tp), (ox, oy + tp)],
           closed=True, layer=_L_PLATE)
     _hatch_rect(msp, ox, oy, L, tp)
+    _poly(msp, [(ox, oy + H - tp), (ox + L, oy + H - tp),
+                (ox + L, oy + H), (ox, oy + H)], closed=True, layer=_L_PLATE)
+    _hatch_rect(msp, ox, oy + H - tp, L, tp)
 
-    # ── Top timber plate (hatched) ────────────────────────────────────────────
-    _poly(msp, [(ox, oy+H-tp), (ox+L, oy+H-tp),
-                (ox+L, oy+H),  (ox, oy+H)],
-          closed=True, layer=_L_PLATE)
-    _hatch_rect(msp, ox, oy+H-tp, L, tp)
-
-    # ── Bamboo studs in elevation ──────────────────────────────────────────────
-    stud_positions = _stud_x_all(L, t1, t2)
-    for sx in stud_positions:
+    # Bamboo studs: body rectangle + circular cross-sections at both plates
+    studs = _stud_x_all(L, t1, t2)
+    for sx in studs:
         cx = ox + sx
-        # Stud body: vertical rectangle between plates
-        _poly(msp, [
-            (cx - sr, oy + tp),   (cx + sr, oy + tp),
-            (cx + sr, oy + H-tp), (cx - sr, oy + H-tp),
-        ], closed=True, layer=_L_PANELS)
-        # Circular cross-section at bottom plate
+        _poly(msp, [(cx - sr, oy + tp), (cx + sr, oy + tp),
+                    (cx + sr, oy + H - tp), (cx - sr, oy + H - tp)],
+              closed=True, layer=_L_STUD)
         _circle(msp, cx, oy + tp / 2, sr, _L_PANELS)
-        # Circular cross-section at top plate
         _circle(msp, cx, oy + H - tp / 2, sr, _L_PANELS)
 
-    # ── Flat-bar X-brace ──────────────────────────────────────────────────────
-    fb_x_l = ox + FLATBAR_H_TRIM / 2    # 25 mm from left
-    fb_x_r = ox + L - FLATBAR_H_TRIM / 2
-    fb_y_b = oy + tp                     # top of bottom plate
-    fb_y_t = oy + H                      # top of panel (= bottom of top plate? no — full H)
+    # Flat-bar X-brace (full panel height, trimmed at ends)
+    xl = ox + FLATBAR_H_TRIM / 2
+    xr = ox + L - FLATBAR_H_TRIM / 2
+    _line(msp, (xl, oy + tp), (xr, oy + H - tp), _L_FLATBAR)
+    _line(msp, (xl, oy + H - tp), (xr, oy + tp), _L_FLATBAR)
 
-    _line(msp, (fb_x_l, fb_y_b), (fb_x_r, fb_y_t), _L_FLATBAR)
-    _line(msp, (fb_x_l, fb_y_t), (fb_x_r, fb_y_b), _L_FLATBAR)
+    # ── Top dimension chain: stud spacings + overall width ────────────────────
+    y_d1 = oy + H + _DIM_OFF_1
+    y_d2 = oy + H + _DIM_OFF_2
+    for a, b in zip(studs, studs[1:]):
+        _hdim(msp, ox + a, ox + b, oy + H, y_d1)
+    _hdim(msp, ox, ox + L, oy + H, y_d2)
 
-    # ── Dimension: overall width ───────────────────────────────────────────────
-    _dim_linear_h(msp, ox, ox + L, oy - 300, f"{L:.0f}")
-
-    # ── Dimension: overall height ──────────────────────────────────────────────
-    _dim_linear_v(msp, oy, oy + H, ox + L + 300, f"{H:.0f}")
-
-    # ── Dimension: plate thickness ────────────────────────────────────────────
-    _dim_linear_v(msp, oy, oy + tp, ox + L + 600, f"{tp:.0f}")
-
-    # ── Flat-bar label ─────────────────────────────────────────────────────────
-    fb_mid_x = ox + L / 2
-    fb_mid_y = oy + H / 2
-    _text(msp, "FLATBAR", fb_mid_x + 100, fb_mid_y, layer=_L_SPEC)
-
-
-def _hatch_rect(msp: Modelspace,
-                x: float, y: float, w: float, h: float) -> None:
-    """ANSI31 hatch for a rectangle."""
-    hatch = msp.add_hatch(dxfattribs={"layer": _L_HATCH})
-    hatch.set_pattern_fill("ANSI31", scale=50)
-    hatch.paths.add_polyline_path(
-        [(x, y), (x+w, y), (x+w, y+h), (x, y+h)], is_closed=True
-    )
-
-
-def _dim_linear_h(msp: Modelspace, x0: float, x1: float,
-                  y_line: float, label: str) -> None:
-    """Minimal horizontal dimension line with text."""
-    _line(msp, (x0, y_line), (x1, y_line), _L_DIM)
-    _line(msp, (x0, y_line - 50), (x0, y_line + 50), _L_DIM)
-    _line(msp, (x1, y_line - 50), (x1, y_line + 50), _L_DIM)
-    _text(msp, label, (x0 + x1) / 2, y_line - 170, layer=_L_DIM)
-
-
-def _dim_linear_v(msp: Modelspace, y0: float, y1: float,
-                  x_line: float, label: str) -> None:
-    """Minimal vertical dimension line with text."""
-    _line(msp, (x_line, y0), (x_line, y1), _L_DIM)
-    _line(msp, (x_line - 50, y0), (x_line + 50, y0), _L_DIM)
-    _line(msp, (x_line - 50, y1), (x_line + 50, y1), _L_DIM)
-    _text(msp, label, x_line + 30, (y0 + y1) / 2, layer=_L_DIM)
+    # ── Left dimension chain: plate / stud / overall heights ──────────────────
+    x_d1 = ox - _DIM_OFF_1
+    x_d2 = ox - _DIM_OFF_2
+    _vdim(msp, oy, oy + tp, ox, x_d1)                    # bottom plate (38)
+    _vdim(msp, oy + tp, oy + H - tp, ox, x_d1)           # stud clear (2024)
+    _vdim(msp, oy + H - tp, oy + H, ox, x_d1)            # top plate (38)
+    _vdim(msp, oy, oy + H, ox, x_d2)                     # overall (2100)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2.  Flat-bar plan callout
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_flatbar_callout(msp: Modelspace, L: float,
-                          t1: int, t2: int,
-                          ox: float, oy: float) -> None:
-    """
-    Plan-view cross-section at the flat-bar level.
-    ox, oy = bottom-left of the outer 100 mm box.
-    """
-    anchor_h = 25
-    # Leader-anchor box (0-S1)
-    _poly(msp, [(ox, oy), (ox+L, oy), (ox+L, oy+anchor_h), (ox, oy+anchor_h)],
+def _draw_flatbar_callout(msp, L, t1, t2, ox, oy):
+    """Plan-view cross-section at the flat-bar level with stud-spacing dims.
+    (ox, oy) = bottom-left of the thin anchor strip."""
+    strip_h = 25
+    # Leader-anchor strip (0-S1)
+    _poly(msp, [(ox, oy), (ox + L, oy), (ox + L, oy + strip_h), (ox, oy + strip_h)],
           closed=True, layer=_L_LEADER)
-
-    # Plate cross-section (PLATE_WIDTH deep)
-    p0, p1 = oy + anchor_h + 5, oy + anchor_h + 5 + PLATE_WIDTH
-    _poly(msp, [(ox, p0), (ox+L, p0), (ox+L, p1), (ox, p1)],
-          closed=True, layer=_L_PLATE)
-
-    # Flat-bar line inside the plate
-    fb_y = p0 + PLATE_THICKNESS
+    # Flat-bar line just above the strip
+    fb_y = oy + strip_h + 6
     _poly(msp, [(ox + FLATBAR_H_TRIM / 2, fb_y),
                 (ox + L - FLATBAR_H_TRIM / 2, fb_y)],
           closed=False, layer=_L_FLATBAR)
-
-    # Stud circles (plan view)
-    stud_cy = p0 + PLATE_WIDTH / 2
+    # Stud circles
+    stud_cy = fb_y
     for sx in _stud_x_all(L, t1, t2):
         _circle(msp, ox + sx, stud_cy, STUD_RADIUS, _L_PANELS)
 
+    # Stud-spacing dimensions above
+    studs = _stud_x_all(L, t1, t2)
+    y_d1 = oy + strip_h + STUD_RADIUS + _DIM_OFF_1
+    y_d2 = y_d1 + (_DIM_OFF_2 - _DIM_OFF_1)
+    for a, b in zip(studs, studs[1:]):
+        _hdim(msp, ox + a, ox + b, fb_y, y_d1)
+    _hdim(msp, ox, ox + L, fb_y, y_d2)
+
     # Label + leader
-    lbl_x, lbl_y = ox + L / 2, oy - 150
+    lbl_x, lbl_y = ox + L * 0.55, oy - 170
     _text(msp, "FLATBAR", lbl_x, lbl_y, layer=_L_SPEC)
-    _leader(msp, [(ox + L * 0.75, oy + anchor_h + 5),
-                  (ox + L * 0.75, oy - 100),
-                  (lbl_x - 10, oy - 100)])
+    _leader(msp, [(ox + L * 0.75, oy),
+                  (ox + L * 0.75, oy - 120),
+                  (lbl_x - 10, oy - 120)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3.  Individual plate detail callout
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_plate_callout(msp: Modelspace, L: float,
-                        hole_r: float,
-                        ox: float, oy: float,
-                        plate_label: str,
-                        hole_label: str) -> None:
-    """
-    One plate connection-detail callout (top or bottom plate).
-    ox, oy = bottom-left of the outer 100 mm box.
-    """
+def _draw_plate_callout(msp, L, hole_r, ox, oy,
+                        plate_label, hole_label, show_inner_dim=False):
+    """One plate connection-detail callout (top or bottom plate).
+    (ox, oy) = bottom-left of the outer 100 mm box."""
     # Outer viewport border
-    _poly(msp, [(ox, oy), (ox+L, oy), (ox+L, oy+_BOX_H), (ox, oy+_BOX_H)],
+    _poly(msp, [(ox, oy), (ox + L, oy), (ox + L, oy + _BOX_H), (ox, oy + _BOX_H)],
           closed=True, layer=_L_VP)
-
-    # Plate rectangle (PLATE_WIDTH = 88 mm, centred in box)
+    # Plate rectangle (88 mm, centred in the box)
     py0 = oy + _PLATE_MARGIN
     py1 = py0 + PLATE_WIDTH
-    _poly(msp, [(ox, py0), (ox+L, py0), (ox+L, py1), (ox, py1)],
+    _poly(msp, [(ox, py0), (ox + L, py0), (ox + L, py1), (ox, py1)],
           closed=True, layer=_L_PLATE)
-
     # Connection holes at T1 positions
     cy = oy + _BOX_H / 2
-    for hx in _t1_x(L):
-        _filled_circle(msp, ox + hx, cy, hole_r)
+    holes = _t1_x(L)
+    for hx in holes:
+        _solid_circle(msp, ox + hx, cy, hole_r, _L_PANELS)
 
-    # Plate label (above the box)
+    # Inner hole-to-hole dimension (closest to plate) + overall width above it
+    if show_inner_dim and len(holes) >= 2:
+        _hdim(msp, ox + holes[0], ox + holes[-1], oy + _BOX_H, oy + _BOX_H + _DIM_OFF_1)
+        _hdim(msp, ox, ox + L, oy + _BOX_H, oy + _BOX_H + _DIM_OFF_2)
+    else:
+        _hdim(msp, ox, ox + L, oy + _BOX_H, oy + _BOX_H + _DIM_OFF_1)
+
+    # Plate label (left, above the box)
     _text(msp, plate_label, ox + 40, oy + _BOX_H + 30, layer=_L_TEXT)
-
     # Hole annotation + leader
     ann_x = ox + L + 120
-    ann_y = oy + _BOX_H * 0.65
+    ann_y = oy + _BOX_H * 0.55
     _text(msp, hole_label, ann_x, ann_y, layer=_L_SPEC)
     _leader(msp, [(ox + L - STUD_RADIUS, cy),
-                  (ox + L + 60, cy + 60),
-                  (ann_x - 10, cy + 60)])
+                  (ox + L + 60, ann_y + 40),
+                  (ann_x - 10, ann_y + 40)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Layer registration
+# Backwards-compat shim
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ensure_layers(doc) -> None:
@@ -308,46 +297,28 @@ def draw_details(msp: Modelspace,
                  origin_x:    float = 0.0,
                  origin_y:    float = 0.0) -> None:
     """
-    Draw the elevation view and three detail callouts alongside the table.
+    Draw the elevation view and three detail callouts, stacked vertically above
+    the cutting-list table (matching the reference layout).
 
     Call this AFTER write_cutting_table().
-
-    Placement
-    ---------
-    • Elevation  : to the right of the cutting-list table
-    • Callouts   : stacked above the cutting-list table (title block)
-
-    Parameters
-    ----------
-    msp         : ezdxf model-space layout
-    wall_length : panel length in mm
-    t1_count    : number of T1 (end) bamboo studs
-    t2_count    : number of T2 (intermediate) bamboo studs
-    origin_x/y  : offset applied to all geometry (default 0)
     """
-    L = wall_length
+    L  = wall_length
+    ox = origin_x + _panel_left(L)
 
-    # ── 1. Elevation view ─────────────────────────────────────────────────────
-    # Vertically centred on the table+title region
-    total_h = TITLE_TOP_Y - 0    # ≈ 3989 mm
-    elev_oy = origin_y + (total_h - WALL_HEIGHT_TOTAL) / 2
-    elev_ox = origin_x + ELEV_OFFSET_X
+    # 1. Elevation — just above the title block
+    elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
+    _draw_elevation(msp, L, t1_count, t2_count, ox, elev_oy)
 
-    _draw_elevation(msp, L, t1_count, t2_count, elev_ox, elev_oy)
+    # 2. Flat-bar plan callout
+    y_fb = elev_oy + WALL_HEIGHT_TOTAL + _DIM_OFF_2 + _GAP_ELEV_FB
+    _draw_flatbar_callout(msp, L, t1_count, t2_count, ox, y_fb)
 
-    # ── Detail callout X: centre panel on the table width ─────────────────────
-    detail_ox = origin_x + max(TABLE_LEFT_X, (TABLE_RIGHT_X - L) / 2)
-
-    # ── 2. Flatbar plan callout ───────────────────────────────────────────────
-    y_fb = origin_y + TITLE_TOP_Y + _GAP_ABOVE_TABLE
-    _draw_flatbar_callout(msp, L, t1_count, t2_count, detail_ox, y_fb)
-
-    # ── 3. Bottom-plate detail ────────────────────────────────────────────────
-    y_bp = y_fb + _BOX_H + _GAP_FB_BP
-    _draw_plate_callout(msp, L, 16.0, detail_ox, y_bp,
+    # 3. Bottom-plate detail
+    y_bp = y_fb + _DIM_OFF_2 + _GAP_FB_BP
+    _draw_plate_callout(msp, L, 16.0, ox, y_bp,
                         "BOT. PLATE", "DOWEL HOLE")
 
-    # ── 4. Top-plate detail ───────────────────────────────────────────────────
-    y_tp = y_bp + _BOX_H + _GAP_BP_TP
-    _draw_plate_callout(msp, L, 14.0, detail_ox, y_tp,
-                        "TOP PLATE", "J-BOLT HOLE")
+    # 4. Top-plate detail
+    y_tp = y_bp + _BOX_H + _DIM_OFF_1 + _GAP_BP_TP
+    _draw_plate_callout(msp, L, 14.0, ox, y_tp,
+                        "TOP PLATE", "J-BOLT HOLE", show_inner_dim=True)
