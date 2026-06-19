@@ -1,0 +1,118 @@
+{
+  "project": {
+    "name": "CBFT Two-Storey House Type B",
+    "number": "PRJ-2024-002",
+    "drawn_by": "NP",
+    "date": "2024-08-14",
+    "scale": "1:50"
+  },
+  "house_type": "single",
+  "stories": 2,
+
+  "grid": {
+    "columns":    ["A", "B", "C"],
+    "rows":       ["1", "2", "3"],
+    "x_spacings": [3600, 3600],
+    "y_spacings": [3000, 3000]
+  },
+
+  "floors": [
+    {
+      "level": 1,
+      "label": "Ground Floor Plan",
+      "scale": "1:50",
+
+      "walls": [
+        {"from": [0,0], "to": [2,0], "type": "exterior"},
+        {"from": [2,0], "to": [2,2], "type": "exterior"},
+        {"from": [2,2], "to": [0,2], "type": "exterior"},
+        {"from": [0,2], "to": [0,0], "type": "exterior"},
+        {"from": [1,0], "to": [1,2], "type": "interior"}
+      ],
+
+      "openings": [
+        {
+          "wall": [[0,0],[2,0]],
+          "type": "door",
+          "tag": "D1",
+          "width": 900,
+          "offset": 400,
+          "hinge": "start",
+          "swing": "in"
+        },
+        {
+          "wall": [[0,0],[2,0]],
+          "type": "window",
+          "tag": "W1",
+          "width": 1200,
+          "offset": 1800
+        },
+        {
+          "wall": [[2,0],[2,2]],
+          "type": "window",
+          "tag": "W2",
+          "width": 750,
+          "offset": 1000
+        },
+        {
+          "wall": [[1,0],[1,2]],
+          "type": "door",
+          "tag": "D2",
+          "width": 800,
+          "offset": 1200,
+          "hinge": "end",
+          "swing": "in"
+        }
+      ],
+
+      "rooms": [
+        {"name": "LIVING / DINING", "grid": [0.5, 0.5], "area_sqm": 21.6},
+        {"name": "BEDROOM 1",       "grid": [1.5, 0.5], "area_sqm": 21.6}
+      ]
+    },
+    {
+      "level": 2,
+      "label": "Second Floor Plan",
+      "scale": "1:50",
+
+      "walls": [
+        {"from": [0,0], "to": [2,0], "type": "exterior"},
+        {"from": [2,0], "to": [2,2], "type": "exterior"},
+        {"from": [2,2], "to": [0,2], "type": "exterior"},
+        {"from": [0,2], "to": [0,0], "type": "exterior"},
+        {"from": [0,1], "to": [2,1], "type": "interior"}
+      ],
+
+      "openings": [
+        {
+          "wall": [[2,0],[2,2]],
+          "type": "window",
+          "tag": "W3",
+          "width": 1200,
+          "offset": 600
+        },
+        {
+          "wall": [[0,2],[2,2]],
+          "type": "window",
+          "tag": "W4",
+          "width": 1200,
+          "offset": 600
+        },
+        {
+          "wall": [[0,1],[2,1]],
+          "type": "door",
+          "tag": "D3",
+          "width": 800,
+          "offset": 1200,
+          "hinge": "start",
+          "swing": "in"
+        }
+      ],
+
+      "rooms": [
+        {"name": "BEDROOM 2",    "grid": [0.5, 0.25], "area_sqm": 21.6},
+        {"name": "TOILET & BATH","grid": [0.5, 1.5],  "area_sqm": 10.8}
+      ]
+    }
+  ]
+}

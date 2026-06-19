@@ -1,0 +1,85 @@
+{
+  "project": {
+    "name": "CBFT Single-Storey House Type A",
+    "number": "PRJ-2024-001",
+    "drawn_by": "NP",
+    "date": "2024-08-14",
+    "scale": "1:50"
+  },
+  "house_type": "single",
+  "stories": 1,
+
+  "grid": {
+    "columns":    ["A", "B", "C", "D"],
+    "rows":       ["1", "2", "3"],
+    "x_spacings": [3000, 3600, 3000],
+    "y_spacings": [3000, 3000]
+  },
+
+  "floors": [
+    {
+      "level": 1,
+      "label": "Ground Floor Plan",
+      "scale": "1:50",
+
+      "walls": [
+        {"from": [0,0], "to": [3,0], "type": "exterior"},
+        {"from": [3,0], "to": [3,2], "type": "exterior"},
+        {"from": [3,2], "to": [0,2], "type": "exterior"},
+        {"from": [0,2], "to": [0,0], "type": "exterior"},
+        {"from": [1,0], "to": [1,2], "type": "interior"},
+        {"from": [2,0], "to": [2,2], "type": "interior"},
+        {"from": [1,1], "to": [2,1], "type": "interior"}
+      ],
+
+      "openings": [
+        {
+          "wall": [[0,0],[3,0]],
+          "type": "door",
+          "tag": "D1",
+          "width": 900,
+          "offset": 400,
+          "hinge": "start",
+          "swing": "in"
+        },
+        {
+          "wall": [[0,0],[3,0]],
+          "type": "window",
+          "tag": "W1",
+          "width": 1200,
+          "offset": 1800
+        },
+        {
+          "wall": [[3,0],[3,2]],
+          "type": "window",
+          "tag": "W2",
+          "width": 750,
+          "offset": 1000
+        },
+        {
+          "wall": [[3,2],[0,2]],
+          "type": "window",
+          "tag": "W3",
+          "width": 1200,
+          "offset": 600
+        },
+        {
+          "wall": [[1,0],[1,2]],
+          "type": "door",
+          "tag": "D2",
+          "width": 800,
+          "offset": 1200,
+          "hinge": "end",
+          "swing": "in"
+        }
+      ],
+
+      "rooms": [
+        {"name": "LIVING / DINING", "grid": [0.5, 0.5], "area_sqm": 18.0},
+        {"name": "KITCHEN",         "grid": [0.5, 1.5], "area_sqm": 9.0},
+        {"name": "BEDROOM 1",       "grid": [2.0, 0.5], "area_sqm": 16.2},
+        {"name": "TOILET & BATH",   "grid": [2.0, 1.5], "area_sqm": 5.4}
+      ]
+    }
+  ]
+}
