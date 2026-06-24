@@ -54,10 +54,10 @@ class CuttingRow:
         }
 
 
-def _flatbar_length(wall_length: float) -> int:
+def _flatbar_length(wall_length: float, wall_height: float = WALL_HEIGHT_TOTAL) -> int:
     """Diagonal X-brace length for a given wall length (mm)."""
     h = wall_length - FLATBAR_H_TRIM
-    v = WALL_HEIGHT_TOTAL - FLATBAR_V_TRIM
+    v = wall_height - FLATBAR_V_TRIM
     return round(math.sqrt(h**2 + v**2) + FLATBAR_EXTRA)
 
 
@@ -92,7 +92,8 @@ def _riblath_count(t1: int) -> int:
 def compute_cutting_list(wall_length: float,
                          t1_count:    int,
                          t2_count:    int,
-                         cladding:    str = "single") -> list:
+                         cladding:    str   = "single",
+                         wall_height: float = WALL_HEIGHT_TOTAL) -> list:
     """
     Compute CBFT wall cutting list.
 
@@ -101,15 +102,17 @@ def compute_cutting_list(wall_length: float,
     wall_length : total wall plan length (mm)
     t1_count    : end / corner bamboo studs (bps1 in plan DXF)
     t2_count    : intermediate bamboo studs (bpns1 in plan DXF)
-    cladding    : "single" → TADTAD infill matrix (default)
-                  "double" → RIBLATH infill matrix
+    cladding    : "single" -> TADTAD infill matrix (default)
+                  "double" -> RIBLATH infill matrix
+    wall_height : total wall height incl. plates (default 2100 mm)
 
     Returns
     -------
     List of CuttingRow objects.
     """
-    L  = wall_length
-    fb = _flatbar_length(L)
+    L           = wall_length
+    stud_height = wall_height - 2 * PLATE_THICKNESS
+    fb          = _flatbar_length(L, wall_height)
 
     # ── 10 mm flat-bar rods (all studs contribute) ────────────────────────────
     rod_10 = _rod_10_count(t1_count, t2_count)
@@ -124,11 +127,11 @@ def compute_cutting_list(wall_length: float,
     rows = [
         CuttingRow("TOP TIMBER PLATE",  "38X88 MM",                f"{L:.0f} MM",         1),
         CuttingRow("BOT. TIMBER PLATE", "38X88 MM",                f"{L:.0f} MM",         1),
-        CuttingRow("T1 BAMBOO STUD",    "100MM ∅",            f"{STUD_HEIGHT} MM",   t1_count),
+        CuttingRow("T1 BAMBOO STUD",    "100MM ∅",            f"{stud_height:.0f} MM",   t1_count),
     ]
     if t2_count > 0:
         rows.append(
-            CuttingRow("T2 BAMBOO STUD", "100MM ∅",           f"{STUD_HEIGHT} MM",   t2_count)
+            CuttingRow("T2 BAMBOO STUD", "100MM ∅",           f"{stud_height:.0f} MM",   t2_count)
         )
 
     rows += [
@@ -150,7 +153,7 @@ def compute_cutting_list(wall_length: float,
             CuttingRow("RIBLATH", f"600 X {L:.0f} MM", "-", _riblath_count(t1_count))
         )
     else:   # "single" — default
-        tadtad_count = math.ceil(WALL_HEIGHT_TOTAL / TADTAD_STRIP_W)   # = 7
+        tadtad_count = math.ceil(wall_height / TADTAD_STRIP_W)
         rows.append(
             CuttingRow("TADTAD", f"300 X {L:.0f} MM", "-", tadtad_count)
         )

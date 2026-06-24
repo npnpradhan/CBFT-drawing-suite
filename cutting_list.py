@@ -51,9 +51,12 @@ def main() -> None:
     parser.add_argument("plan", help="Path to CBFT wall plan DXF file")
     parser.add_argument("--output", "-o", default=None,
                         help="Output DXF path (default: <plan>_cutting_list.dxf)")
+    parser.add_argument("--height", type=float, default=2100.0,
+                        help="Total wall height in mm, incl. top and bottom plates "
+                             "(default: 2100)")
     parser.add_argument("--cladding", choices=["single", "double"], default="single",
-                        help="Infill matrix type: 'single' → TADTAD (default), "
-                             "'double' → RIBLATH")
+                        help="Infill matrix type: 'single' -> TADTAD (default), "
+                             "'double' -> RIBLATH")
     parser.add_argument("--csv",  action="store_true",
                         help="Also export a CSV file")
     parser.add_argument("--verbose", "-v", action="store_true")
@@ -70,13 +73,17 @@ def main() -> None:
     t1     = params["t1_count"]
     t2     = params["t2_count"]
 
+    wall_height = args.height
+
     print(f"Wall length : {L:.0f} mm")
+    print(f"Wall height : {wall_height:.0f} mm")
     print(f"T1 studs    : {t1}  (end/corner)")
     print(f"T2 studs    : {t2}  (intermediate)")
     print(f"Cladding    : {args.cladding}")
 
     # ── Compute cutting list ──────────────────────────────────────────────────
-    rows = compute_cutting_list(L, t1, t2, cladding=args.cladding)
+    rows = compute_cutting_list(L, t1, t2, cladding=args.cladding,
+                                wall_height=wall_height)
 
     if args.verbose:
         print("\n  COMPONENT               SIZE                  LENGTH       QTY")
@@ -95,7 +102,7 @@ def main() -> None:
     msp = doc.modelspace()
     panel_id = plan_path.stem.replace("_plan", "").upper()
     write_cutting_table(msp, rows, origin_x=0, origin_y=0, panel_id=panel_id)
-    draw_details(msp, L, t1, t2, origin_x=0, origin_y=0)
+    draw_details(msp, L, t1, t2, origin_x=0, origin_y=0, wall_height=wall_height)
 
     doc.saveas(out_path)
     print(f"DXF saved  : {out_path}")

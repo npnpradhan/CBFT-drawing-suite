@@ -150,10 +150,10 @@ def _vdim(msp, y1, y2, x_geom, x_dimline):
 # 1.  Full wall elevation view
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_elevation(msp, L, t1, t2, ox, oy):
+def _draw_elevation(msp, L, t1, t2, ox, oy, wall_height=WALL_HEIGHT_TOTAL):
     """Draw a 1:1 wall elevation with plates, studs, X-brace and dimensions.
     (ox, oy) = bottom-left corner of the panel."""
-    H  = WALL_HEIGHT_TOTAL    # 2100
+    H  = wall_height
     tp = PLATE_THICKNESS      # 38
     sr = STUD_RADIUS          # 50
 
@@ -295,7 +295,8 @@ def draw_details(msp: Modelspace,
                  t1_count:    int,
                  t2_count:    int,
                  origin_x:    float = 0.0,
-                 origin_y:    float = 0.0) -> None:
+                 origin_y:    float = 0.0,
+                 wall_height: float = WALL_HEIGHT_TOTAL) -> None:
     """
     Draw the elevation view and three detail callouts, stacked vertically above
     the cutting-list table (matching the reference layout).
@@ -307,10 +308,10 @@ def draw_details(msp: Modelspace,
 
     # 1. Elevation — just above the title block
     elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
-    _draw_elevation(msp, L, t1_count, t2_count, ox, elev_oy)
+    _draw_elevation(msp, L, t1_count, t2_count, ox, elev_oy, wall_height)
 
     # 2. Flat-bar plan callout
-    y_fb = elev_oy + WALL_HEIGHT_TOTAL + _DIM_OFF_2 + _GAP_ELEV_FB
+    y_fb = elev_oy + wall_height + _DIM_OFF_2 + _GAP_ELEV_FB
     _draw_flatbar_callout(msp, L, t1_count, t2_count, ox, y_fb)
 
     # 3. Bottom-plate detail
