@@ -163,8 +163,12 @@ def _callout_marker(msp, cx, cy):
 # 1.  Full wall elevation view
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_elevation(msp, L, t1, t2, ox, oy, wall_height=WALL_HEIGHT_TOTAL):
-    """Draw a 1:1 wall elevation with plates, studs, X-brace and dimensions."""
+def _draw_elevation(msp, L, ox, oy, stud_positions, wall_height=WALL_HEIGHT_TOTAL):
+    """Draw a 1:1 wall elevation with plates, studs, X-brace and dimensions.
+
+    stud_positions: list of (relative_x, is_t1) sorted left-to-right,
+                    where relative_x is measured from the panel left edge.
+    """
     H  = wall_height
     tp = PLATE_THICKNESS      # 38
     sh = H - 2 * tp           # stud height
@@ -182,14 +186,18 @@ def _draw_elevation(msp, L, t1, t2, ox, oy, wall_height=WALL_HEIGHT_TOTAL):
           closed=True, layer=_L_PLATE)
     _hatch_rect(msp, ox, oy + H - tp, L, tp)
 
-    # Bamboo studs — use N2N block (bottom of stud at top of bottom plate)
-    studs = _stud_x_all(L, t1, t2)
-    for sx in studs:
+    # Bamboo studs — positions and types come from the plan DXF
+    # T1 (end/corner): N2N block — J-bolt + foundation connection hatching
+    # T2 (intermediate): Type B block — flat-bar hatch, no plate connections
+    for sx, is_t1 in stud_positions:
         cx = ox + sx
-        placed = _assets.add_n2n_stud(msp, cx, oy + tp, stud_height=sh,
-                                       layer=_L_STUD)
+        if is_t1:
+            placed = _assets.add_n2n_stud(msp, cx, oy + tp, stud_height=sh,
+                                           layer=_L_STUD)
+        else:
+            placed = _assets.add_type_b_stud(msp, cx, oy + tp, stud_height=sh,
+                                              layer=_L_STUD)
         if not placed:
-            # Fallback: manual rectangle
             sr = STUD_RADIUS
             _poly(msp, [(cx - sr, oy + tp),  (cx + sr, oy + tp),
                         (cx + sr, oy + H - tp), (cx - sr, oy + H - tp)],
@@ -209,6 +217,7 @@ def _draw_elevation(msp, L, t1, t2, ox, oy, wall_height=WALL_HEIGHT_TOTAL):
         _callout_marker(msp, cx_fb, cy_fb)
 
     # ── Top dimension chain: stud spacings + overall width ────────────────────
+    studs = [sx for sx, _ in stud_positions]
     y_d1 = oy + H + _DIM_OFF_1
     y_d2 = oy + H + _DIM_OFF_2
     for a, b in zip(studs, studs[1:]):
@@ -228,8 +237,11 @@ def _draw_elevation(msp, L, t1, t2, ox, oy, wall_height=WALL_HEIGHT_TOTAL):
 # 2.  Flat-bar plan callout
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_flatbar_callout(msp, L, t1, t2, ox, oy):
-    """Plan-view cross-section at flat-bar level with stud-spacing dims."""
+def _draw_flatbar_callout(msp, L, ox, oy, stud_positions):
+    """Plan-view cross-section at flat-bar level with stud-spacing dims.
+
+    stud_positions: list of (relative_x, is_t1) sorted left-to-right.
+    """
     strip_h = 25
     # Leader-anchor strip
     _poly(msp, [(ox, oy), (ox + L, oy), (ox + L, oy + strip_h), (ox, oy + strip_h)],
@@ -240,21 +252,17 @@ def _draw_flatbar_callout(msp, L, t1, t2, ox, oy):
                 (ox + L - FLATBAR_H_TRIM / 2, fb_y)],
           closed=False, layer=_L_FLATBAR)
 
-    # Stud circles — use bps1 for T1 positions, bpns1 for T2
-    # T1 are the first and last studs; remaining are T2
-    stud_xs = _stud_x_all(L, t1, t2)
-    t1_positions = {stud_xs[0], stud_xs[-1]} if len(stud_xs) >= 2 else set(stud_xs)
+    # Stud circles — positions and types come from plan DXF
     stud_cy = fb_y
-
-    for i, sx in enumerate(stud_xs):
+    for sx, is_t1 in stud_positions:
         cx = ox + sx
-        is_t1 = sx in t1_positions
         block = "bps1" if is_t1 else "bpns1"
         placed = _assets.add_blockref(msp, block, cx, stud_cy, layer=_L_STUD)
         if not placed:
             _circle(msp, cx, stud_cy, STUD_RADIUS, _L_PANELS)
 
     # Stud-spacing dimensions
+    stud_xs = [sx for sx, _ in stud_positions]
     y_d1 = oy + strip_h + STUD_RADIUS + _DIM_OFF_1
     y_d2 = y_d1 + (_DIM_OFF_2 - _DIM_OFF_1)
     for a, b in zip(stud_xs, stud_xs[1:]):
@@ -326,20 +334,35 @@ def ensure_layers(doc) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def draw_details(msp: Modelspace,
-                 wall_length: float,
-                 t1_count:    int,
-                 t2_count:    int,
-                 origin_x:    float = 0.0,
-                 origin_y:    float = 0.0,
-                 wall_height: float = WALL_HEIGHT_TOTAL) -> None:
+                 wall_length:     float,
+                 t1_count:        int,
+                 t2_count:        int,
+                 origin_x:        float = 0.0,
+                 origin_y:        float = 0.0,
+                 wall_height:     float = WALL_HEIGHT_TOTAL,
+                 stud_positions=None) -> None:
     """
     Draw the elevation view and three detail callouts, stacked vertically above
     the cutting-list table.  Call this AFTER write_cutting_table().
+
+    stud_positions: list of (relative_x, is_t1) from parse_wall_plan(), giving
+                    actual stud X coordinates from the plan DXF.  When None or
+                    empty, positions are computed from t1_count / t2_count with
+                    even spacing as a fallback.
 
     Imports CBFT standard blocks from Assets Description.dxf when available.
     """
     L  = wall_length
     ox = origin_x + _panel_left(L)
+
+    # Build stud position list — use plan-extracted positions when available,
+    # fall back to even-spacing when the parser couldn't extract them.
+    if stud_positions:
+        sp = stud_positions
+    else:
+        xs     = _stud_x_all(L, t1_count, t2_count)
+        t1_set = {xs[0], xs[-1]} if len(xs) >= 2 else set(xs)
+        sp     = [(x, x in t1_set) for x in xs]
 
     # Import asset blocks into the document (no-op if already imported or
     # if assets file not present)
@@ -347,11 +370,11 @@ def draw_details(msp: Modelspace,
 
     # 1. Elevation
     elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
-    _draw_elevation(msp, L, t1_count, t2_count, ox, elev_oy, wall_height)
+    _draw_elevation(msp, L, ox, elev_oy, sp, wall_height)
 
     # 2. Flat-bar plan callout
     y_fb = elev_oy + wall_height + _DIM_OFF_2 + _GAP_ELEV_FB
-    _draw_flatbar_callout(msp, L, t1_count, t2_count, ox, y_fb)
+    _draw_flatbar_callout(msp, L, ox, y_fb, sp)
 
     # 3. Bottom-plate detail (dowel holes)
     y_bp = y_fb + _DIM_OFF_2 + _GAP_FB_BP
