@@ -68,10 +68,11 @@ def main() -> None:
         sys.exit(1)
 
     # ── Parse plan ────────────────────────────────────────────────────────────
-    params = parse_wall_plan(str(plan_path))
-    L      = params["wall_length"]
-    t1     = params["t1_count"]
-    t2     = params["t2_count"]
+    params          = parse_wall_plan(str(plan_path))
+    L               = params["wall_length"]
+    t1              = params["t1_count"]
+    t2              = params["t2_count"]
+    stud_positions  = params.get("stud_positions", [])
 
     wall_height = args.height
 
@@ -80,6 +81,9 @@ def main() -> None:
     print(f"T1 studs    : {t1}  (end/corner)")
     print(f"T2 studs    : {t2}  (intermediate)")
     print(f"Cladding    : {args.cladding}")
+    if stud_positions:
+        xs_str = ", ".join(f"{x:.0f}" for x, _ in stud_positions)
+        print(f"Stud X pos  : [{xs_str}] mm from left")
 
     # ── Compute cutting list ──────────────────────────────────────────────────
     rows = compute_cutting_list(L, t1, t2, cladding=args.cladding,
@@ -102,7 +106,8 @@ def main() -> None:
     msp = doc.modelspace()
     panel_id = plan_path.stem.replace("_plan", "").upper()
     write_cutting_table(msp, rows, origin_x=0, origin_y=0, panel_id=panel_id)
-    draw_details(msp, L, t1, t2, origin_x=0, origin_y=0, wall_height=wall_height)
+    draw_details(msp, L, t1, t2, origin_x=0, origin_y=0, wall_height=wall_height,
+                 stud_positions=stud_positions)
 
     doc.saveas(out_path)
     print(f"DXF saved  : {out_path}")
