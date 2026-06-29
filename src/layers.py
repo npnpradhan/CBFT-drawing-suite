@@ -55,15 +55,28 @@ _STYLES: list[tuple[str, str]] = [
 
 
 # ── DIM100 dimension style ────────────────────────────────────────────────────
-# Exact values from reference; applied to all generated dimension entities.
+# Values extracted directly from Assets Description.dxf (DIM100 and BASE styles).
 _DIM100 = {
-    "dimscale": 1.0,     # overall scale factor (1 = 1:1 in modelspace)
-    "dimtxt":   220.0,   # text height
-    "dimasz":   180.0,   # arrow size
-    "dimclrd":   30,     # dimension line colour (ACI 30 = orange)
-    "dimclre":   30,     # extension line colour
-    "dimclrt":    7,     # text colour (ACI 7 = white/black)
-    "dimtxsty": "LEROY", # text style
+    "dimscale": 1.0,
+    "dimtxt":   100.0,       # text height (was 220 — assets: 100)
+    "dimasz":    50.0,       # arrow/tick size (was 180 — assets: 50)
+    "dimblk1":  "_ArchTick", # arrow 1 — arch tick (assets: _ArchTick)
+    "dimblk2":  "_ArchTick", # arrow 2
+    "dimsah":   1,           # separate arrow blocks
+    "dimclrd":  30,          # dimension line colour (ACI 30)
+    "dimclre":  30,          # extension line colour
+    "dimclrt":   3,          # text colour (ACI 3 = green; was 7)
+    "dimtxsty": "LEROY",
+    "dimgap":   50.0,        # gap between text and dimension line
+    "dimexe":    0.0,        # extension line extension beyond dim line
+    "dimexo":  100.0,        # extension line origin offset
+    "dimtad":    1,          # text above dimension line
+    "dimtix":    1,          # force text inside extension lines
+    "dimtofl":   1,          # force dim line between extension lines
+    "dimtmove":  1,          # move text with a leader when outside
+    "dimdec":    0,          # 0 decimal places for dimensions
+    "dimadec":   2,
+    "dimzin":    1,
 }
 
 
@@ -104,7 +117,15 @@ def setup_layers(doc: ezdxf.document.Drawing) -> None:
         layer.dxf.linetype   = ltype
         layer.dxf.plot       = plot
 
-    # ── 4. Dimension style ────────────────────────────────────────────────────
+    # ── 4. Arrow block ────────────────────────────────────────────────────────
+    # _ArchTick = diagonal line from (-0.5,-0.5) to (0.5,0.5) — confirmed from
+    # assets analysis.  Must exist before DIM100 references it.
+    if "_ArchTick" not in doc.blocks:
+        blk = doc.blocks.new("_ArchTick")
+        blk.add_lwpolyline([(-0.5, -0.5), (0.5, 0.5)],
+                           dxfattribs={"layer": "0"})
+
+    # ── 5. Dimension style ────────────────────────────────────────────────────
     if "DIM100" in doc.dimstyles:
         ds = doc.dimstyles.get("DIM100")
     else:

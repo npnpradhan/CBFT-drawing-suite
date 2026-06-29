@@ -5,7 +5,11 @@ a = Analysis(
     ['cutting_list.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:/Users/Nischal Pradhan/AppData/Local/Programs/Python/Python312/Lib/site-packages/ezdxf/fonts', 'ezdxf/fonts'), ('C:/Users/Nischal Pradhan/AppData/Local/Programs/Python/Python312/Lib/site-packages/ezdxf/resources', 'ezdxf/resources')],
+    datas=[
+        ('C:/Users/Nischal Pradhan/AppData/Local/Programs/Python/Python312/Lib/site-packages/ezdxf/fonts', 'ezdxf/fonts'),
+        ('C:/Users/Nischal Pradhan/AppData/Local/Programs/Python/Python312/Lib/site-packages/ezdxf/resources', 'ezdxf/resources'),
+        ('Assets Description.dxf', '.'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
