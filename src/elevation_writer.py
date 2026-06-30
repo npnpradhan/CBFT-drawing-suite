@@ -39,6 +39,10 @@ _L_HATCH   = "A-Hatch"
 STUD_RADIUS  = STUD_DIAMETER / 2
 TABLE_CX     = (TABLE_LEFT_X + TABLE_RIGHT_X) / 2
 
+# ── Plan cross-section constants ──────────────────────────────────────────────
+_PANEL_DEPTH = 100   # bamboo frame depth (front-to-back in plan view, mm)
+_PLASTER_T   = 25    # cement plaster / sheathing thickness per face (mm)
+
 # ── Vertical stacking ─────────────────────────────────────────────────────────
 _GAP_TITLE_ELEV = 300
 _GAP_ELEV_FB    = 550
@@ -237,23 +241,37 @@ def _draw_elevation(msp, L, ox, oy, stud_positions, wall_height=WALL_HEIGHT_TOTA
 # 2.  Flat-bar plan callout
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_flatbar_callout(msp, L, ox, oy, stud_positions):
-    """Plan-view cross-section at flat-bar level with stud-spacing dims.
+def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
+    """Plan-view cross-section showing panel body, cement plaster, and studs.
 
-    stud_positions: list of (relative_x, is_t1) sorted left-to-right.
+    Draws the full panel cross-section:
+      - AR-Panels rectangle  : bamboo frame body, _PANEL_DEPTH (100 mm) deep
+      - 0-S1 rectangle(s)   : cement plaster strip, _PLASTER_T (25 mm) thick
+      - A-Hatch ANSI32 fills : one per plaster strip
+      single → one plaster strip (back face only)
+      double → two plaster strips (front and back faces)
     """
-    strip_h = 25
-    # Leader-anchor strip
-    _poly(msp, [(ox, oy), (ox + L, oy), (ox + L, oy + strip_h), (ox, oy + strip_h)],
-          closed=True, layer=_L_LEADER)
+    pd     = _PANEL_DEPTH
+    pt     = _PLASTER_T
+    double = (cladding == "double")
 
-    fb_y = oy + strip_h + 6
+    # ── Panel body Y extents (front plaster is below when double-sided) ───────
+    y_panel_lo = oy + (pt if double else 0)
+    y_panel_hi = y_panel_lo + pd
+    stud_cy    = (y_panel_lo + y_panel_hi) / 2
+
+    # Panel body rectangle (AR-Panels)
+    _poly(msp, [(ox, y_panel_lo), (ox + L, y_panel_lo),
+                (ox + L, y_panel_hi), (ox, y_panel_hi)],
+          closed=True, layer=_L_PANELS)
+
+    # Flat-bar at front face of panel body
+    fb_y = y_panel_lo
     _poly(msp, [(ox + FLATBAR_H_TRIM / 2, fb_y),
                 (ox + L - FLATBAR_H_TRIM / 2, fb_y)],
           closed=False, layer=_L_FLATBAR)
 
     # Stud circles — positions and types come from plan DXF
-    stud_cy = fb_y
     for sx, is_t1 in stud_positions:
         cx = ox + sx
         block = "bps1" if is_t1 else "bpns1"
@@ -261,20 +279,34 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions):
         if not placed:
             _circle(msp, cx, stud_cy, STUD_RADIUS, _L_PANELS)
 
-    # Stud-spacing dimensions
-    stud_xs = [sx for sx, _ in stud_positions]
-    y_d1 = oy + strip_h + STUD_RADIUS + _DIM_OFF_1
-    y_d2 = y_d1 + (_DIM_OFF_2 - _DIM_OFF_1)
-    for a, b in zip(stud_xs, stud_xs[1:]):
-        _hdim(msp, ox + a, ox + b, fb_y, y_d1)
-    _hdim(msp, ox, ox + L, fb_y, y_d2)
+    # Back plaster strip (always present — exterior / back face)
+    _poly(msp, [(ox, y_panel_hi), (ox + L, y_panel_hi),
+                (ox + L, y_panel_hi + pt), (ox, y_panel_hi + pt)],
+          closed=True, layer=_L_LEADER)
+    _hatch_rect(msp, ox, y_panel_hi, L, pt, pattern="ANSI32", scale=5.0)
 
-    # Label + leader
+    # Front plaster strip (double-sided only — interior / front face)
+    if double:
+        _poly(msp, [(ox, oy), (ox + L, oy),
+                    (ox + L, oy + pt), (ox, oy + pt)],
+              closed=True, layer=_L_LEADER)
+        _hatch_rect(msp, ox, oy, L, pt, pattern="ANSI32", scale=5.0)
+
+    # Stud-spacing dimensions (above the cross-section)
+    y_top    = y_panel_hi + pt
+    stud_xs  = [sx for sx, _ in stud_positions]
+    y_d1     = y_top + _DIM_OFF_1
+    y_d2     = y_top + _DIM_OFF_2
+    for a, b in zip(stud_xs, stud_xs[1:]):
+        _hdim(msp, ox + a, ox + b, y_top, y_d1)
+    _hdim(msp, ox, ox + L, y_top, y_d2)
+
+    # Label + leader (below the section, pointing to flat-bar face)
     lbl_x, lbl_y = ox + L * 0.55, oy - 170
     _text(msp, "FLATBAR", lbl_x, lbl_y, layer=_L_SPEC)
-    _leader(msp, [(ox + L * 0.75, oy),
-                  (ox + L * 0.75, oy - 120),
-                  (lbl_x - 10,   oy - 120)])
+    _leader(msp, [(ox + L * 0.75, fb_y),
+                  (ox + L * 0.75, lbl_y + _TH),
+                  (lbl_x - 10,   lbl_y + _TH)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -340,7 +372,8 @@ def draw_details(msp: Modelspace,
                  origin_x:        float = 0.0,
                  origin_y:        float = 0.0,
                  wall_height:     float = WALL_HEIGHT_TOTAL,
-                 stud_positions=None) -> None:
+                 stud_positions=None,
+                 cladding:        str   = "single") -> None:
     """
     Draw the elevation view and three detail callouts, stacked vertically above
     the cutting-list table.  Call this AFTER write_cutting_table().
@@ -349,6 +382,8 @@ def draw_details(msp: Modelspace,
                     actual stud X coordinates from the plan DXF.  When None or
                     empty, positions are computed from t1_count / t2_count with
                     even spacing as a fallback.
+    cladding: "single" → one cement plaster strip in plan view
+              "double" → two cement plaster strips (both faces)
 
     Imports CBFT standard blocks from Assets Description.dxf when available.
     """
@@ -374,7 +409,7 @@ def draw_details(msp: Modelspace,
 
     # 2. Flat-bar plan callout
     y_fb = elev_oy + wall_height + _DIM_OFF_2 + _GAP_ELEV_FB
-    _draw_flatbar_callout(msp, L, ox, y_fb, sp)
+    _draw_flatbar_callout(msp, L, ox, y_fb, sp, cladding=cladding)
 
     # 3. Bottom-plate detail (dowel holes)
     y_bp = y_fb + _DIM_OFF_2 + _GAP_FB_BP

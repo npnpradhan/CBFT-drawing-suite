@@ -107,7 +107,7 @@ def main() -> None:
     panel_id = plan_path.stem.replace("_plan", "").upper()
     write_cutting_table(msp, rows, origin_x=0, origin_y=0, panel_id=panel_id)
     draw_details(msp, L, t1, t2, origin_x=0, origin_y=0, wall_height=wall_height,
-                 stud_positions=stud_positions)
+                 stud_positions=stud_positions, cladding=args.cladding)
 
     doc.saveas(out_path)
     print(f"DXF saved  : {out_path}")
