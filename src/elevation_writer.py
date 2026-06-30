@@ -248,15 +248,16 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
       - AR-Panels rectangle  : bamboo frame body, _PANEL_DEPTH (100 mm) deep
       - 0-S1 rectangle(s)   : cement plaster strip, _PLASTER_T (25 mm) thick
       - A-Hatch ANSI32 fills : one per plaster strip
-      single → one plaster strip (back face only)
-      double → two plaster strips (front and back faces)
+      single → one plaster strip on the flat-bar face
+      double → two plaster strips (flat-bar face + opposite face)
     """
     pd     = _PANEL_DEPTH
     pt     = _PLASTER_T
     double = (cladding == "double")
 
-    # ── Panel body Y extents (front plaster is below when double-sided) ───────
-    y_panel_lo = oy + (pt if double else 0)
+    # Front plaster strip always occupies [oy, oy+pt] — same face as flat bar.
+    # Panel body sits above it.  Back plaster is added on top for double only.
+    y_panel_lo = oy + pt
     y_panel_hi = y_panel_lo + pd
     stud_cy    = (y_panel_lo + y_panel_hi) / 2
 
@@ -265,7 +266,7 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
                 (ox + L, y_panel_hi), (ox, y_panel_hi)],
           closed=True, layer=_L_PANELS)
 
-    # Flat-bar at front face of panel body
+    # Flat-bar at front face of panel body (top of front plaster)
     fb_y = y_panel_lo
     _poly(msp, [(ox + FLATBAR_H_TRIM / 2, fb_y),
                 (ox + L - FLATBAR_H_TRIM / 2, fb_y)],
@@ -279,24 +280,24 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
         if not placed:
             _circle(msp, cx, stud_cy, STUD_RADIUS, _L_PANELS)
 
-    # Back plaster strip (always present — exterior / back face)
-    _poly(msp, [(ox, y_panel_hi), (ox + L, y_panel_hi),
-                (ox + L, y_panel_hi + pt), (ox, y_panel_hi + pt)],
+    # Front plaster strip (always — same side as flat bar)
+    _poly(msp, [(ox, oy), (ox + L, oy),
+                (ox + L, oy + pt), (ox, oy + pt)],
           closed=True, layer=_L_LEADER)
-    _hatch_rect(msp, ox, y_panel_hi, L, pt, pattern="ANSI32", scale=5.0)
+    _hatch_rect(msp, ox, oy, L, pt, pattern="ANSI32", scale=5.0)
 
-    # Front plaster strip (double-sided only — interior / front face)
+    # Back plaster strip (double-sided only — opposite face)
     if double:
-        _poly(msp, [(ox, oy), (ox + L, oy),
-                    (ox + L, oy + pt), (ox, oy + pt)],
+        _poly(msp, [(ox, y_panel_hi), (ox + L, y_panel_hi),
+                    (ox + L, y_panel_hi + pt), (ox, y_panel_hi + pt)],
               closed=True, layer=_L_LEADER)
-        _hatch_rect(msp, ox, oy, L, pt, pattern="ANSI32", scale=5.0)
+        _hatch_rect(msp, ox, y_panel_hi, L, pt, pattern="ANSI32", scale=5.0)
 
     # Stud-spacing dimensions (above the cross-section)
-    y_top    = y_panel_hi + pt
-    stud_xs  = [sx for sx, _ in stud_positions]
-    y_d1     = y_top + _DIM_OFF_1
-    y_d2     = y_top + _DIM_OFF_2
+    y_top   = y_panel_hi + (pt if double else 0)
+    stud_xs = [sx for sx, _ in stud_positions]
+    y_d1    = y_top + _DIM_OFF_1
+    y_d2    = y_top + _DIM_OFF_2
     for a, b in zip(stud_xs, stud_xs[1:]):
         _hdim(msp, ox + a, ox + b, y_top, y_d1)
     _hdim(msp, ox, ox + L, y_top, y_d2)
