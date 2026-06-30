@@ -111,6 +111,32 @@ def _t1_indices(n_total: int, t1_count: int) -> set:
     return {round(i * (n_total - 1) / (t1_count - 1)) for i in range(t1_count)}
 
 
+def _get_cladding(msp, wall_length: float) -> str:
+    """
+    Detect single vs double-sided cement plaster from the plan DXF.
+
+    Counts LWPOLYLINE rectangles on the 0-S1 layer that are approximately
+    wall_length wide and ~25 mm tall — these are the plaster strip outlines.
+      1 strip → "single"   (one cladded face)
+      2 strips → "double"  (both faces cladded)
+    """
+    _PLASTER_T = 25.0
+    count = 0
+    for e in msp:
+        if e.dxftype() != "LWPOLYLINE" or e.dxf.layer != "0-S1":
+            continue
+        pts = list(e.get_points("xy"))
+        if len(pts) < 4:
+            continue
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        w = max(xs) - min(xs)
+        h = max(ys) - min(ys)
+        if abs(w - wall_length) < 10.0 and abs(h - _PLASTER_T) < 5.0:
+            count += 1
+    return "double" if count >= 2 else "single"
+
+
 def _get_stud_positions_relative(msp, wall_left, wall_length, t1_count, t2_count):
     """
     Extract stud centre X positions from the horizontal dimension chain
@@ -186,6 +212,7 @@ def parse_wall_plan(dxf_path: str) -> dict:
         t1_count        : int    — number of T1 (end) bamboo studs
         t2_count        : int    — number of T2 (intermediate) bamboo studs
         stud_positions  : list   — [(relative_x, is_t1), ...] sorted left-to-right
+        cladding        : str    — "single" or "double" (from 0-S1 plaster strips)
         source_file     : str    — input file path
     """
     doc = ezdxf.readfile(dxf_path)
@@ -205,11 +232,13 @@ def parse_wall_plan(dxf_path: str) -> dict:
     stud_positions = _get_stud_positions_relative(
         msp, wall_left, wall_length, t1_count, t2_count
     )
+    cladding       = _get_cladding(msp, wall_length)
 
     return {
         "wall_length":    wall_length,
         "t1_count":       t1_count,
         "t2_count":       t2_count,
         "stud_positions": stud_positions,
+        "cladding":       cladding,
         "source_file":    dxf_path,
     }

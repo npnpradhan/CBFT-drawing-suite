@@ -54,9 +54,10 @@ def main() -> None:
     parser.add_argument("--height", type=float, default=2100.0,
                         help="Total wall height in mm, incl. top and bottom plates "
                              "(default: 2100)")
-    parser.add_argument("--cladding", choices=["single", "double"], default="single",
-                        help="Infill matrix type: 'single' -> TADTAD (default), "
-                             "'double' -> RIBLATH")
+    parser.add_argument("--cladding", choices=["single", "double"], default=None,
+                        help="Override cladding type: 'single' (TADTAD) or 'double' "
+                             "(RIBLATH).  Detected automatically from the plan DXF "
+                             "when not specified.")
     parser.add_argument("--csv",  action="store_true",
                         help="Also export a CSV file")
     parser.add_argument("--verbose", "-v", action="store_true")
@@ -73,6 +74,7 @@ def main() -> None:
     t1              = params["t1_count"]
     t2              = params["t2_count"]
     stud_positions  = params.get("stud_positions", [])
+    cladding        = args.cladding or params.get("cladding", "single")
 
     wall_height = args.height
 
@@ -80,13 +82,13 @@ def main() -> None:
     print(f"Wall height : {wall_height:.0f} mm")
     print(f"T1 studs    : {t1}  (end/corner)")
     print(f"T2 studs    : {t2}  (intermediate)")
-    print(f"Cladding    : {args.cladding}")
+    print(f"Cladding    : {cladding}{'' if args.cladding else ' (from plan)'}")
     if stud_positions:
         xs_str = ", ".join(f"{x:.0f}" for x, _ in stud_positions)
         print(f"Stud X pos  : [{xs_str}] mm from left")
 
     # ── Compute cutting list ──────────────────────────────────────────────────
-    rows = compute_cutting_list(L, t1, t2, cladding=args.cladding,
+    rows = compute_cutting_list(L, t1, t2, cladding=cladding,
                                 wall_height=wall_height)
 
     if args.verbose:
