@@ -208,13 +208,19 @@ def _draw_elevation(msp, L, ox, oy, stud_positions, wall_height=WALL_HEIGHT_TOTA
                   closed=True, layer=_L_STUD)
 
     # Flat-bar X-brace
-    # Endpoints at plate CENTRES (matching reference sp01-elevation)
+    # Endpoints at plate CENTRES, 25 mm inside each panel edge (outside half of end studs)
     xl   = ox + FLATBAR_H_TRIM / 2
     xr   = ox + L - FLATBAR_H_TRIM / 2
     y_bc = oy + tp / 2           # centre of bottom plate
     y_tc = oy + H - tp / 2       # centre of top plate
+    # Thin centreline (construction geometry)
     _line(msp, (xl, y_bc), (xr, y_tc), _L_FLATBAR)
     _line(msp, (xl, y_tc), (xr, y_bc), _L_FLATBAR)
+    # Thick polyline — 25 mm wide, represents physical flat bar (matches DP01-Elev)
+    msp.add_lwpolyline([(xl, y_bc), (xr, y_tc)],
+                       dxfattribs={"layer": _L_FLATBAR, "const_width": 25.0})
+    msp.add_lwpolyline([(xl, y_tc), (xr, y_bc)],
+                       dxfattribs={"layer": _L_FLATBAR, "const_width": 25.0})
 
     # Callout markers at all 4 X-brace corners (BFGGBN or manual)
     for cx_fb, cy_fb in [(xl, y_bc), (xr, y_bc), (xl, y_tc), (xr, y_tc)]:
@@ -562,12 +568,19 @@ def _draw_door_elevation(msp, L: float, ox: float, oy: float,
     solid_ox = ox + door_right_x
     solid_L  = right_end_x - door_right_x
     if solid_L > FLATBAR_H_TRIM:
-        xl   = solid_ox + FLATBAR_H_TRIM / 2
-        xr   = solid_ox + solid_L - FLATBAR_H_TRIM / 2
+        # Extend 25 mm OUTSIDE each stud centre (outside/front half), matching reference
+        xl   = solid_ox - FLATBAR_H_TRIM / 2
+        xr   = solid_ox + solid_L + FLATBAR_H_TRIM / 2
         y_bc = oy + tp / 2
         y_tc = oy + H - tp / 2
+        # Thin centreline
         _line(msp, (xl, y_bc), (xr, y_tc), _L_FLATBAR)
         _line(msp, (xl, y_tc), (xr, y_bc), _L_FLATBAR)
+        # Thick polyline — 25 mm wide, matches DP01-Elev reference
+        msp.add_lwpolyline([(xl, y_bc), (xr, y_tc)],
+                           dxfattribs={"layer": _L_FLATBAR, "const_width": 25.0})
+        msp.add_lwpolyline([(xl, y_tc), (xr, y_bc)],
+                           dxfattribs={"layer": _L_FLATBAR, "const_width": 25.0})
         for cx_fb, cy_fb in [(xl, y_bc), (xr, y_bc), (xl, y_tc), (xr, y_tc)]:
             _callout_marker(msp, cx_fb, cy_fb)
 
