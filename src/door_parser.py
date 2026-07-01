@@ -98,6 +98,96 @@ def _get_panel_width(msp) -> float:
     raise ValueError("Cannot determine panel width from DXF file.")
 
 
+def _get_opening_from_dimensions(msp, panel_width: float):
+    """
+    Derive the door/window opening width from the horizontal dimension chain.
+
+    The opening is the LARGEST sub-dimension (the other sub-dims are the
+    solid-section bay spacings, which are all smaller).
+
+    Returns the largest sub-dimension rounded to 1 decimal place, or None
+    when the dimension chain cannot be read.
+    """
+    sub_dims = []
+    for e in msp:
+        if e.dxftype() != "DIMENSION":
+            continue
+        try:
+            m = abs(float(e.dxf.actual_measurement))
+        except Exception:
+            continue
+        if abs(m - panel_width) < 2.0:     # skip overall panel-width dimension
+            continue
+        if m < 50.0:
+            continue
+        try:
+            dp2 = e.dxf.defpoint2
+            dp3 = e.dxf.defpoint3
+        except Exception:
+            continue
+        if abs(dp2.y - dp3.y) > 50.0:      # horizontal only
+            continue
+        if abs(dp2.x - dp3.x) < 5.0:
+            continue
+        sub_dims.append(m)
+
+    if not sub_dims:
+        return None
+    return round(max(sub_dims), 1)
+
+
+def _count_door_studs(msp, panel_width: float):
+    """
+    Derive T1 / T2 stud counts from the horizontal dimension chain in the plan.
+
+    Strategy
+    --------
+    The plan encodes one sub-dimension per bay (gap between adjacent stud centres).
+    One of those bays equals the door/window opening width; the rest are the
+    solid-section bay spacings.
+
+      n_bays      = number of sub-dimensions  (= n_studs - 1)
+      n_solid_bays = n_bays - 1               (subtract the opening bay)
+      T2           = max(0, n_solid_bays - 1) (intermediate studs in solid section)
+      T1           = n_studs - T2             (everything else)
+
+    Falls back to (2, 0) when fewer than two stud positions can be found.
+    """
+    xs: set[float] = set()
+    for e in msp:
+        if e.dxftype() != "DIMENSION":
+            continue
+        try:
+            m = abs(float(e.dxf.actual_measurement))
+        except Exception:
+            continue
+        if abs(m - panel_width) < 2.0:     # skip overall panel-width dimension
+            continue
+        if m < 50.0:                        # ignore tiny annotation dims
+            continue
+        try:
+            dp2 = e.dxf.defpoint2
+            dp3 = e.dxf.defpoint3
+        except Exception:
+            continue
+        # Horizontal only: same Y within ±50 mm, meaningful X span
+        if abs(dp2.y - dp3.y) > 50.0:
+            continue
+        if abs(dp2.x - dp3.x) < 5.0:
+            continue
+        xs.add(round(dp2.x, 0))
+        xs.add(round(dp3.x, 0))
+
+    n = len(xs)
+    if n < 2:
+        return 2, 0     # minimal: just two end studs, no T2
+
+    # n stud positions → n-1 bays total, n-2 solid-section bays
+    t2 = max(0, n - 3)
+    t1 = n - t2
+    return t1, t2
+
+
 def _get_cladding(msp, panel_width: float) -> str:
     """
     Detect single vs double-sided cement plaster — same logic as wall_parser.
@@ -179,6 +269,8 @@ def parse_door_window_plan(dxf_path: str) -> dict:
         panel_type    : str   — "door" or "window"
         panel_width   : float — total panel length in mm
         opening_width : float — clear door/window opening width in mm
+        t1_count      : int   — end / structural bamboo studs
+        t2_count      : int   — intermediate bamboo studs
         cladding      : str   — "single" or "double"
         source_file   : str   — input file path
     """
@@ -198,17 +290,27 @@ def parse_door_window_plan(dxf_path: str) -> dict:
     panel_type  = _detect_panel_type(doc, block_name)
     opening_width = _get_opening_width(doc, block_name)
 
+    # Validate: opening must be meaningfully smaller than the panel
+    if opening_width is not None and opening_width >= panel_width - 50:
+        opening_width = None   # discard implausible value, try other methods
+
     if opening_width is None:
-        # Fallback: opening = panel minus one timber-plate width on each side
+        # Fallback 1: derive from dimension chain (largest sub-dimension = opening)
+        opening_width = _get_opening_from_dimensions(msp, panel_width)
+    if opening_width is None:
+        # Fallback 2: panel minus two plate thicknesses (last resort)
         from .cutting_rules import PLATE_THICKNESS
         opening_width = panel_width - 2 * PLATE_THICKNESS
 
+    t1_count, t2_count = _count_door_studs(msp, panel_width)
     cladding = _get_cladding(msp, panel_width)
 
     return {
         "panel_type":    panel_type,
         "panel_width":   panel_width,
         "opening_width": opening_width,
+        "t1_count":      t1_count,
+        "t2_count":      t2_count,
         "cladding":      cladding,
         "source_file":   dxf_path,
     }
