@@ -299,17 +299,56 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single",
         _plaster_seg(ox, ox + L, oy, pt)
     else:
         bl, br = plaster_break
-        _plaster_seg(ox,   bl,      oy, pt)   # left of opening
-        _plaster_seg(br,   ox + L,  oy, pt)   # right of opening
+        tp_jamb = PLATE_THICKNESS       # jamb timber width = 38 mm
+        # jamb extents derived from stud inner faces (bl, br)
+        jamb_lx0 = bl                   # left stud inner face = left jamb outer x
+        jamb_lx1 = bl + tp_jamb         # left jamb inner x (start of clear opening)
+        jamb_rx1 = br                   # right stud inner face = right jamb inner x
+        jamb_rx0 = br - tp_jamb         # right jamb outer x (end of clear opening)
+        clear_w  = jamb_rx0 - jamb_lx1  # clear opening width
+
+        _plaster_seg(ox,   jamb_lx0,  oy, pt)   # left of opening
+        _plaster_seg(jamb_rx1, ox + L, oy, pt)  # right of opening
+
+        # ── Door jambs in plan (hatched rectangles at each side of opening) ────
+        _poly(msp, [(jamb_lx0, y_panel_lo), (jamb_lx1, y_panel_lo),
+                    (jamb_lx1, y_panel_hi), (jamb_lx0, y_panel_hi)],
+              closed=True, layer=_L_PLATE)
+        _hatch_rect(msp, jamb_lx0, y_panel_lo, tp_jamb, pd)
+
+        _poly(msp, [(jamb_rx0, y_panel_lo), (jamb_rx1, y_panel_lo),
+                    (jamb_rx1, y_panel_hi), (jamb_rx0, y_panel_hi)],
+              closed=True, layer=_L_PLATE)
+        _hatch_rect(msp, jamb_rx0, y_panel_lo, tp_jamb, pd)
+
+        # ── Door swing symbol below the front face ────────────────────────────
+        # Hinge at inner face of left jamb, at the panel front face (oy).
+        # The door swings OUTWARD (downward, -Y direction in drawing).
+        _DOOR_LEAF_T = 50   # door leaf thickness mm
+        hx, hy = jamb_lx1, oy
+
+        # Line: door in closed position (spanning clear opening horizontally)
+        _line(msp, (hx, hy), (hx + clear_w, hy), _L_ELEV)
+
+        # Rectangle: door leaf in open position (swung 90° outward, pointing -Y)
+        _poly(msp, [(hx,             hy),
+                    (hx,             hy - clear_w),
+                    (hx + _DOOR_LEAF_T, hy - clear_w),
+                    (hx + _DOOR_LEAF_T, hy)],
+              closed=True, layer=_L_ELEV)
+
+        # Arc: swing path of door tip — CCW from 270° (open, -Y) to 360° (closed, +X)
+        msp.add_arc((hx, hy), clear_w, 270, 360,
+                    dxfattribs={"layer": _L_ELEV})
 
     # Back plaster strip (double-sided only — opposite face)
     if double:
         if plaster_break is None:
             _plaster_seg(ox, ox + L, y_panel_hi, pt)
         else:
-            bl, br = plaster_break
-            _plaster_seg(ox,   bl,     y_panel_hi, pt)
-            _plaster_seg(br,   ox + L, y_panel_hi, pt)
+            # bl / br already set above when plaster_break is not None
+            _plaster_seg(ox,        jamb_lx0,  y_panel_hi, pt)
+            _plaster_seg(jamb_rx1,  ox + L,    y_panel_hi, pt)
 
     # Stud-spacing dimensions (above the cross-section)
     y_top   = y_panel_hi + (pt if double else 0)
