@@ -34,6 +34,7 @@ _LAYERS: list[tuple] = [
     ("AR-Bamboo Stud",            2,  -3, "Continuous",      1),
     ("AR-FURNITURES",             9,  -3, "Continuous",      1),
     ("AR-Flatbar",              143,  -3, "Continuous",      1),  # ACI 143 (olive-grey)
+    ("AR-Jambs",                  3,  -3, "Continuous",      1),  # green — door/window jambs
     ("AR-Panels",                 4,  -3, "Continuous",      1),  # cyan — stud inserts
     ("AR-Timber Plate",           3,  -3, "Continuous",      1),  # green — plate rectangles
     ("Bolts",                     4,  -3, "HIDDEN2",         1),
