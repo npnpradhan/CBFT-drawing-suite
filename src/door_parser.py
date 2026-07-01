@@ -136,23 +136,8 @@ def _get_opening_from_dimensions(msp, panel_width: float):
     return round(max(sub_dims), 1)
 
 
-def _count_door_studs(msp, panel_width: float):
-    """
-    Derive T1 / T2 stud counts from the horizontal dimension chain in the plan.
-
-    Strategy
-    --------
-    The plan encodes one sub-dimension per bay (gap between adjacent stud centres).
-    One of those bays equals the door/window opening width; the rest are the
-    solid-section bay spacings.
-
-      n_bays      = number of sub-dimensions  (= n_studs - 1)
-      n_solid_bays = n_bays - 1               (subtract the opening bay)
-      T2           = max(0, n_solid_bays - 1) (intermediate studs in solid section)
-      T1           = n_studs - T2             (everything else)
-
-    Falls back to (2, 0) when fewer than two stud positions can be found.
-    """
+def _collect_stud_xs(msp, panel_width: float) -> list:
+    """Return sorted unique stud x-positions from the horizontal dimension chain."""
     xs: set[float] = set()
     for e in msp:
         if e.dxftype() != "DIMENSION":
@@ -161,28 +146,71 @@ def _count_door_studs(msp, panel_width: float):
             m = abs(float(e.dxf.actual_measurement))
         except Exception:
             continue
-        if abs(m - panel_width) < 2.0:     # skip overall panel-width dimension
+        if abs(m - panel_width) < 2.0:
             continue
-        if m < 50.0:                        # ignore tiny annotation dims
+        if m < 50.0:
             continue
         try:
             dp2 = e.dxf.defpoint2
             dp3 = e.dxf.defpoint3
         except Exception:
             continue
-        # Horizontal only: same Y within ±50 mm, meaningful X span
         if abs(dp2.y - dp3.y) > 50.0:
             continue
         if abs(dp2.x - dp3.x) < 5.0:
             continue
         xs.add(round(dp2.x, 0))
         xs.add(round(dp3.x, 0))
+    return sorted(xs)
 
+
+def _count_door_studs(msp, panel_width: float, doc=None, block_name: str = None):
+    """
+    Count T1 (bps1) and T2 (bpns1) bamboo studs for a door/window panel.
+
+    Primary method: count bps1/bpns1 INSERT blocks inside the panel block.
+      - bps1 = solid bamboo stud (T1 type)
+      - bpns1 = notched bamboo stud (T2 type)
+    bpns1 inserts that lie far outside the bps1 x-range (section-detail orphans)
+    are excluded.  If no valid bpns1 are found, T2 is inferred from the
+    dimension chain: T2 = n_positions − T1.
+
+    Fallback: dimension-chain position count only (when no block info available).
+    """
+    # ── Primary: block insert counting ────────────────────────────────────────
+    if doc is not None and block_name and block_name in doc.blocks:
+        bps1_xs = []
+        bpns1_xs = []
+        for e in doc.blocks[block_name]:
+            if e.dxftype() != "INSERT":
+                continue
+            name = e.dxf.name.lower()
+            bx = e.dxf.insert[0]
+            if "bps1" in name:
+                bps1_xs.append(bx)
+            elif "bpns1" in name:
+                bpns1_xs.append(bx)
+
+        if bps1_xs:
+            t1 = len(bps1_xs)
+            # Exclude bpns1 that are section-detail orphans (far from bps1 range)
+            min_x, max_x = min(bps1_xs), max(bps1_xs)
+            valid_t2 = sum(
+                1 for x in bpns1_xs
+                if min_x - panel_width <= x <= max_x + panel_width
+            )
+            if valid_t2 > 0:
+                return t1, valid_t2
+            # No valid bpns1 found; infer T2 from dimension chain
+            xs = _collect_stud_xs(msp, panel_width)
+            t2 = max(0, len(xs) - t1)
+            return t1, t2
+
+    # ── Fallback: dimension chain only ────────────────────────────────────────
+    xs = _collect_stud_xs(msp, panel_width)
     n = len(xs)
     if n < 2:
-        return 2, 0     # minimal: just two end studs, no T2
-
-    # n stud positions → n-1 bays total, n-2 solid-section bays
+        return 2, 0
     t2 = max(0, n - 3)
     t1 = n - t2
     return t1, t2
@@ -302,7 +330,7 @@ def parse_door_window_plan(dxf_path: str) -> dict:
         from .cutting_rules import PLATE_THICKNESS
         opening_width = panel_width - 2 * PLATE_THICKNESS
 
-    t1_count, t2_count = _count_door_studs(msp, panel_width)
+    t1_count, t2_count = _count_door_studs(msp, panel_width, doc=doc, block_name=block_name)
     cladding = _get_cladding(msp, panel_width)
 
     return {
