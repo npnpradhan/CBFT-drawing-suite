@@ -241,7 +241,8 @@ def _draw_elevation(msp, L, ox, oy, stud_positions, wall_height=WALL_HEIGHT_TOTA
 # 2.  Flat-bar plan callout
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
+def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single",
+                          plaster_break=None):
     """Plan-view cross-section showing panel body, cement plaster, and studs.
 
     Draws the full panel cross-section:
@@ -250,6 +251,10 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
       - A-Hatch ANSI32 fills : one per plaster strip
       single → one plaster strip on the flat-bar face
       double → two plaster strips (flat-bar face + opposite face)
+
+    plaster_break: optional (break_left_x, break_right_x) in absolute coords.
+                   When provided the plaster strip is split into two segments
+                   (left and right of the door opening), as in the reference drawing.
     """
     pd     = _PANEL_DEPTH
     pt     = _PLASTER_T
@@ -280,18 +285,31 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single"):
         if not placed:
             _circle(msp, cx, stud_cy, STUD_RADIUS, _L_PANELS)
 
-    # Front plaster strip (always — same side as flat bar)
-    _poly(msp, [(ox, oy), (ox + L, oy),
-                (ox + L, oy + pt), (ox, oy + pt)],
-          closed=True, layer=_L_LEADER)
-    _hatch_rect(msp, ox, oy, L, pt, pattern="ANSI32", scale=5.0)
+    # Helper — draw one plaster segment (rect + hatch) with optional gap
+    def _plaster_seg(x0, x1, y0, h):
+        w = x1 - x0
+        if w < 1.0:
+            return
+        _poly(msp, [(x0, y0), (x1, y0), (x1, y0 + h), (x0, y0 + h)],
+              closed=True, layer=_L_LEADER)
+        _hatch_rect(msp, x0, y0, w, h, pattern="ANSI32", scale=5.0)
+
+    # Front plaster strip (always — same side as flat bar); breaks at door opening
+    if plaster_break is None:
+        _plaster_seg(ox, ox + L, oy, pt)
+    else:
+        bl, br = plaster_break
+        _plaster_seg(ox,   bl,      oy, pt)   # left of opening
+        _plaster_seg(br,   ox + L,  oy, pt)   # right of opening
 
     # Back plaster strip (double-sided only — opposite face)
     if double:
-        _poly(msp, [(ox, y_panel_hi), (ox + L, y_panel_hi),
-                    (ox + L, y_panel_hi + pt), (ox, y_panel_hi + pt)],
-              closed=True, layer=_L_LEADER)
-        _hatch_rect(msp, ox, y_panel_hi, L, pt, pattern="ANSI32", scale=5.0)
+        if plaster_break is None:
+            _plaster_seg(ox, ox + L, y_panel_hi, pt)
+        else:
+            bl, br = plaster_break
+            _plaster_seg(ox,   bl,     y_panel_hi, pt)
+            _plaster_seg(br,   ox + L, y_panel_hi, pt)
 
     # Stud-spacing dimensions (above the cross-section)
     y_top   = y_panel_hi + (pt if double else 0)
@@ -454,29 +472,46 @@ def _draw_door_elevation(msp, L: float, ox: float, oy: float,
                   closed=True, layer=_L_STUD)
 
     # ── Door opening geometry ─────────────────────────────────────────────────
-    op_x0   = ox + door_left_x
-    op_x1   = ox + door_right_x
+    # Stud inner faces — door jamb timbers sit here, adjacent to studs
+    jamb_lx0  = ox + door_left_x  + STUD_RADIUS   # left stud inner face
+    jamb_rx1  = ox + door_right_x - STUD_RADIUS   # right stud inner face
+    jamb_lx1  = jamb_lx0 + tp                     # right edge of left jamb
+    jamb_rx0  = jamb_rx1 - tp                     # left edge of right jamb
+
     op_y0   = oy + tp                    # bottom of opening (top of bot plate)
     head_y0 = op_y0 + opening_height     # bottom of door head jamb
     head_y1 = head_y0 + tp               # top of door head jamb
 
-    # Door opening rectangle
-    _poly(msp, [(op_x0, op_y0), (op_x1, op_y0),
-                (op_x1, head_y0), (op_x0, head_y0)],
+    # Left door jamb timber (hatched)
+    _poly(msp, [(jamb_lx0, op_y0), (jamb_lx1, op_y0),
+                (jamb_lx1, head_y0), (jamb_lx0, head_y0)],
+          closed=True, layer=_L_PLATE)
+    _hatch_rect(msp, jamb_lx0, op_y0, tp, opening_height)
+
+    # Right door jamb timber (hatched)
+    _poly(msp, [(jamb_rx0, op_y0), (jamb_rx1, op_y0),
+                (jamb_rx1, head_y0), (jamb_rx0, head_y0)],
+          closed=True, layer=_L_PLATE)
+    _hatch_rect(msp, jamb_rx0, op_y0, tp, opening_height)
+
+    # Clear opening rectangle (void between the two jambs)
+    _poly(msp, [(jamb_lx1, op_y0), (jamb_rx0, op_y0),
+                (jamb_rx0, head_y0), (jamb_lx1, head_y0)],
           closed=True, layer=_L_ELEV)
 
-    # Door head jamb (timber, hatched)
-    _poly(msp, [(op_x0, head_y0), (op_x1, head_y0),
-                (op_x1, head_y1), (op_x0, head_y1)],
+    # Door head jamb (timber, hatched) — spans full jamb-to-jamb width
+    head_w = jamb_rx1 - jamb_lx0
+    _poly(msp, [(jamb_lx0, head_y0), (jamb_rx1, head_y0),
+                (jamb_rx1, head_y1), (jamb_lx0, head_y1)],
           closed=True, layer=_L_PLATE)
-    _hatch_rect(msp, op_x0, head_y0, opening_width, tp)
+    _hatch_rect(msp, jamb_lx0, head_y0, head_w, tp)
 
-    # Short bamboo stud above head jamb (centred between door T1 studs)
-    short_cx     = (op_x0 + op_x1) / 2
-    short_height = H - tp - opening_height - tp   # = stud_zone - opening - head_jamb
+    # Short bamboo stud above head jamb — T2 type (no J-bolt, no mortar infill)
+    short_cx     = ox + (door_left_x + door_right_x) / 2
+    short_height = H - tp - opening_height - tp   # stud zone − opening − head jamb
     if short_height > 0:
-        placed = _assets.add_n2n_stud(msp, short_cx, head_y1,
-                                      stud_height=short_height, layer=_L_STUD)
+        placed = _assets.add_type_b_stud(msp, short_cx, head_y1,
+                                         stud_height=short_height, layer=_L_STUD)
         if not placed:
             sr = STUD_RADIUS
             _poly(msp, [(short_cx-sr, head_y1), (short_cx+sr, head_y1),
@@ -594,6 +629,31 @@ def _draw_window_elevation(msp, L: float, ox: float, oy: float,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DP01-Plan block import helper
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _insert_door_plan_block(msp, source_dxf_path: str,
+                            ox: float, oy: float) -> None:
+    """
+    Import DP01-Plan block from *source_dxf_path* into the current drawing
+    and insert it at (ox, oy).  Silently skips if the block is not found or
+    if the import fails for any reason.
+    """
+    try:
+        import ezdxf as _ezdxf
+        src = _ezdxf.readfile(source_dxf_path)
+        if 'DP01-Plan' not in src.blocks:
+            return
+        importer = _ezdxf.Importer(src, msp.doc)
+        importer.import_blocks(['DP01-Plan'], replace=False)
+        importer.finalize()
+        msp.add_blockref('DP01-Plan', (ox, oy),
+                         dxfattribs={'layer': _L_PANELS})
+    except Exception:
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Public door / window entry points
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -606,11 +666,15 @@ def draw_door_details(msp: Modelspace,
                       origin_x:       float = 0.0,
                       origin_y:       float = 0.0,
                       wall_height:    float = WALL_HEIGHT_TOTAL,
-                      cladding:       str   = "single") -> None:
+                      cladding:       str   = "single",
+                      source_dxf:     str   = None) -> None:
     """
     Draw door-panel detail drawings stacked above the cutting-list table.
     Produces: door elevation, flat-bar plan callout, bot-plate detail,
     top-plate detail.
+
+    source_dxf: path to the source DXF; when provided, the DP01-Plan block
+                is imported and inserted below the flat-bar callout.
     """
     L  = panel_width
     ox = origin_x + _panel_left(L)
@@ -621,8 +685,17 @@ def draw_door_details(msp: Modelspace,
     sp = _draw_door_elevation(msp, L, ox, elev_oy, opening_width,
                               opening_height, t1_count, t2_count, wall_height)
 
+    # Cement plaster breaks at the door opening (stud inner faces)
+    door_left_x  = sp[0][0]   # = STUD_RADIUS
+    door_right_x = sp[1][0]   # = STUD_RADIUS + opening_width
+    plaster_break = (
+        ox + door_left_x  + STUD_RADIUS,   # left stud inner face
+        ox + door_right_x - STUD_RADIUS,   # right stud inner face
+    )
+
     y_fb = elev_oy + wall_height + _DIM_OFF_2 + _GAP_ELEV_FB
-    _draw_flatbar_callout(msp, L, ox, y_fb, sp, cladding=cladding)
+    _draw_flatbar_callout(msp, L, ox, y_fb, sp, cladding=cladding,
+                          plaster_break=plaster_break)
 
     y_bp = y_fb + _DIM_OFF_2 + _GAP_FB_BP
     _draw_plate_callout(msp, L, "Dowel Hole", 16.0, ox, y_bp,
@@ -631,6 +704,11 @@ def draw_door_details(msp: Modelspace,
     y_tp = y_bp + _BOX_H + _DIM_OFF_1 + _GAP_BP_TP
     _draw_plate_callout(msp, L, "J-Bolt Hole", 14.0, ox, y_tp,
                         "TOP PLATE", "J-BOLT HOLE", show_inner_dim=True)
+
+    # Door plan view from source DXF block DP01-Plan
+    if source_dxf:
+        y_plan = y_tp + _BOX_H + _DIM_OFF_2 + _GAP_BP_TP
+        _insert_door_plan_block(msp, source_dxf, ox, y_plan)
 
 
 def draw_window_details(msp: Modelspace,

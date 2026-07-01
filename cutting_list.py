@@ -137,6 +137,7 @@ def main() -> None:
                 t2_count=t2_count,
                 wall_height=panel_height,
                 cladding=cladding,
+                source_dxf=str(plan_path),
             )
             draw_fn = draw_door_details
 
