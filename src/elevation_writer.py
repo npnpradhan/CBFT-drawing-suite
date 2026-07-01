@@ -358,70 +358,163 @@ def _draw_plate_callout(msp, L, hole_block: str, hole_r: float, ox, oy,
 # 5.  Door / window elevation helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _door_stud_positions(L: float, opening_width: float,
+                         t1_count: int, t2_count: int) -> list:
+    """
+    Build the (relative_x, is_t1) stud list for a door panel.
+
+    Assumes the door opening is at the LEFT edge of the panel:
+      - T1 at x = STUD_RADIUS  (left-end stud, also door-left framing)
+      - T1 at x = STUD_RADIUS + opening_width  (door-right framing)
+      - Additional T1 / T2 studs evenly distributed in the solid section
+      - T1 at x = L - STUD_RADIUS  (right-end stud)
+    """
+    n_total = t1_count + t2_count
+    left_x     = STUD_RADIUS
+    door_rgt_x = STUD_RADIUS + opening_width
+    right_x    = L - STUD_RADIUS
+
+    if n_total <= 2:
+        # All-door panel — just end studs; door-right = right-end
+        return [(left_x, True), (right_x, True)]
+
+    # Solid section: studs between door-right T1 and right-end T1
+    solid_w       = right_x - door_rgt_x
+    n_interior    = n_total - 3          # studs between door-right and right-end
+    n_interior    = max(0, n_interior)
+    n_interior_t1 = max(0, t1_count - 3) # how many of those are T1
+
+    interior_xs = []
+    if n_interior > 0:
+        step = solid_w / (n_interior + 1)
+        interior_xs = [door_rgt_x + step * i for i in range(1, n_interior + 1)]
+
+    sp  = [(left_x, True), (door_rgt_x, True)]
+    sp += [(x, i < n_interior_t1) for i, x in enumerate(interior_xs)]
+    sp += [(right_x, True)]
+    return sp
+
+
 def _draw_door_elevation(msp, L: float, ox: float, oy: float,
                          opening_width: float,
-                         wall_height: float = WALL_HEIGHT_TOTAL) -> None:
-    """Door panel elevation: plates, end T1 studs, framed opening, head timber."""
+                         opening_height: float,
+                         t1_count: int = 2,
+                         t2_count: int = 0,
+                         wall_height: float = WALL_HEIGHT_TOTAL) -> list:
+    """
+    Door panel elevation.
+
+    Draws:
+      - top / bottom timber plates (hatched)
+      - all bamboo studs at full height (T1 via N2N block, T2 via Type-B)
+      - door opening from bottom plate to head jamb
+      - door head jamb (timber) at the correct height
+      - short bamboo stud above the head jamb (centred between door T1 studs)
+      - flat-bar X-brace on the solid section only
+      - horizontal + vertical dimension chains
+
+    Returns the stud_positions list (for re-use in plan callout).
+    """
     H  = wall_height
     tp = PLATE_THICKNESS
+    sh = H - 2 * tp   # full bamboo stud height
 
-    # Panel outline
+    # ── Panel outline ─────────────────────────────────────────────────────────
     _poly(msp, [(ox, oy), (ox+L, oy), (ox+L, oy+H), (ox, oy+H)],
           closed=True, layer=_L_ELEV)
 
-    # Bottom plate
-    _poly(msp, [(ox, oy), (ox+L, oy), (ox+L, oy+tp), (ox, oy+tp)],
+    # ── Timber plates ─────────────────────────────────────────────────────────
+    _poly(msp, [(ox, oy),      (ox+L, oy),      (ox+L, oy+tp),   (ox, oy+tp)],
           closed=True, layer=_L_PLATE)
     _hatch_rect(msp, ox, oy, L, tp)
-
-    # Top plate
-    _poly(msp, [(ox, oy+H-tp), (ox+L, oy+H-tp), (ox+L, oy+H), (ox, oy+H)],
+    _poly(msp, [(ox, oy+H-tp), (ox+L, oy+H-tp), (ox+L, oy+H),    (ox, oy+H)],
           closed=True, layer=_L_PLATE)
     _hatch_rect(msp, ox, oy+H-tp, L, tp)
 
-    # T1 bamboo studs at each end (full stud zone height)
-    sh = H - 2 * tp
-    for sx in [STUD_RADIUS, L - STUD_RADIUS]:
-        placed = _assets.add_n2n_stud(msp, ox+sx, oy+tp, stud_height=sh,
-                                       layer=_L_STUD)
+    # ── Stud positions ────────────────────────────────────────────────────────
+    stud_positions = _door_stud_positions(L, opening_width, t1_count, t2_count)
+
+    # Door-left and door-right framing T1 centres (in panel-relative coords)
+    door_left_x  = stud_positions[0][0]       # STUD_RADIUS
+    door_right_x = stud_positions[1][0]       # STUD_RADIUS + opening_width
+
+    # ── Draw all bamboo studs at full height ──────────────────────────────────
+    for sx, is_t1 in stud_positions:
+        cx = ox + sx
+        if is_t1:
+            placed = _assets.add_n2n_stud(msp, cx, oy+tp, stud_height=sh,
+                                          layer=_L_STUD)
+        else:
+            placed = _assets.add_type_b_stud(msp, cx, oy+tp, stud_height=sh,
+                                             layer=_L_STUD)
         if not placed:
             sr = STUD_RADIUS
-            _poly(msp, [(ox+sx-sr, oy+tp), (ox+sx+sr, oy+tp),
-                        (ox+sx+sr, oy+H-tp), (ox+sx-sr, oy+H-tp)],
+            _poly(msp, [(cx-sr, oy+tp), (cx+sr, oy+tp),
+                        (cx+sr, oy+H-tp), (cx-sr, oy+H-tp)],
                   closed=True, layer=_L_STUD)
 
-    # Door opening (centered horizontally)
-    op_x0 = ox + (L - opening_width) / 2
-    op_x1 = op_x0 + opening_width
-    op_y0 = oy + tp              # above bottom plate
-    head_y0 = oy + H - 2 * tp   # bottom of head timber
-    head_y1 = oy + H - tp        # top of head / bottom of top plate
+    # ── Door opening geometry ─────────────────────────────────────────────────
+    op_x0   = ox + door_left_x
+    op_x1   = ox + door_right_x
+    op_y0   = oy + tp                    # bottom of opening (top of bot plate)
+    head_y0 = op_y0 + opening_height     # bottom of door head jamb
+    head_y1 = head_y0 + tp               # top of door head jamb
 
-    # Head timber
+    # Door opening rectangle
+    _poly(msp, [(op_x0, op_y0), (op_x1, op_y0),
+                (op_x1, head_y0), (op_x0, head_y0)],
+          closed=True, layer=_L_ELEV)
+
+    # Door head jamb (timber, hatched)
     _poly(msp, [(op_x0, head_y0), (op_x1, head_y0),
                 (op_x1, head_y1), (op_x0, head_y1)],
           closed=True, layer=_L_PLATE)
     _hatch_rect(msp, op_x0, head_y0, opening_width, tp)
 
-    # Opening rectangle outline
-    _poly(msp, [(op_x0, op_y0), (op_x1, op_y0),
-                (op_x1, head_y0), (op_x0, head_y0)],
-          closed=True, layer=_L_ELEV)
+    # Short bamboo stud above head jamb (centred between door T1 studs)
+    short_cx     = (op_x0 + op_x1) / 2
+    short_height = H - tp - opening_height - tp   # = stud_zone - opening - head_jamb
+    if short_height > 0:
+        placed = _assets.add_n2n_stud(msp, short_cx, head_y1,
+                                      stud_height=short_height, layer=_L_STUD)
+        if not placed:
+            sr = STUD_RADIUS
+            _poly(msp, [(short_cx-sr, head_y1), (short_cx+sr, head_y1),
+                        (short_cx+sr, oy+H-tp),  (short_cx-sr, oy+H-tp)],
+                  closed=True, layer=_L_STUD)
 
-    # Dimensions — top: opening + overall width
+    # ── Flat-bar X-brace — solid section only ────────────────────────────────
+    right_end_x = stud_positions[-1][0]
+    solid_ox = ox + door_right_x
+    solid_L  = right_end_x - door_right_x
+    if solid_L > FLATBAR_H_TRIM:
+        xl   = solid_ox + FLATBAR_H_TRIM / 2
+        xr   = solid_ox + solid_L - FLATBAR_H_TRIM / 2
+        y_bc = oy + tp / 2
+        y_tc = oy + H - tp / 2
+        _line(msp, (xl, y_bc), (xr, y_tc), _L_FLATBAR)
+        _line(msp, (xl, y_tc), (xr, y_bc), _L_FLATBAR)
+        for cx_fb, cy_fb in [(xl, y_bc), (xr, y_bc), (xl, y_tc), (xr, y_tc)]:
+            _callout_marker(msp, cx_fb, cy_fb)
+
+    # ── Dimension chains ──────────────────────────────────────────────────────
+    stud_xs = [sx for sx, _ in stud_positions]
     y_d1 = oy + H + _DIM_OFF_1
     y_d2 = oy + H + _DIM_OFF_2
-    _hdim(msp, op_x0, op_x1, oy+H, y_d1)
-    _hdim(msp, ox,    ox+L,   oy+H, y_d2)
+    for a, b in zip(stud_xs, stud_xs[1:]):
+        _hdim(msp, ox+a, ox+b, oy+H, y_d1)
+    _hdim(msp, ox, ox+L, oy+H, y_d2)
 
-    # Dimensions — left: plates / opening / head heights
     x_d1 = ox - _DIM_OFF_1
     x_d2 = ox - _DIM_OFF_2
-    _vdim(msp, oy,       oy+tp,   ox, x_d1)
-    _vdim(msp, oy+tp,    head_y0, ox, x_d1)
-    _vdim(msp, head_y0,  head_y1, ox, x_d1)
-    _vdim(msp, head_y1,  oy+H,    ox, x_d1)
-    _vdim(msp, oy,       oy+H,    ox, x_d2)
+    _vdim(msp, oy,      oy+tp,    ox, x_d1)   # bottom plate
+    _vdim(msp, oy+tp,   head_y0,  ox, x_d1)   # opening height
+    _vdim(msp, head_y0, head_y1,  ox, x_d1)   # door head jamb
+    _vdim(msp, head_y1, oy+H-tp,  ox, x_d1)   # short stud zone
+    _vdim(msp, oy+H-tp, oy+H,     ox, x_d1)   # top plate
+    _vdim(msp, oy,      oy+H,     ox, x_d2)   # overall
+
+    return stud_positions
 
 
 def _draw_window_elevation(msp, L: float, ox: float, oy: float,
@@ -505,12 +598,15 @@ def _draw_window_elevation(msp, L: float, ox: float, oy: float,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def draw_door_details(msp: Modelspace,
-                      panel_width:   float,
-                      opening_width: float,
-                      origin_x:      float = 0.0,
-                      origin_y:      float = 0.0,
-                      wall_height:   float = WALL_HEIGHT_TOTAL,
-                      cladding:      str   = "single") -> None:
+                      panel_width:    float,
+                      opening_width:  float,
+                      opening_height: float,
+                      t1_count:       int   = 2,
+                      t2_count:       int   = 0,
+                      origin_x:       float = 0.0,
+                      origin_y:       float = 0.0,
+                      wall_height:    float = WALL_HEIGHT_TOTAL,
+                      cladding:       str   = "single") -> None:
     """
     Draw door-panel detail drawings stacked above the cutting-list table.
     Produces: door elevation, flat-bar plan callout, bot-plate detail,
@@ -519,13 +615,11 @@ def draw_door_details(msp: Modelspace,
     L  = panel_width
     ox = origin_x + _panel_left(L)
 
-    # Door panels always have 2 T1 studs at the extreme ends
-    sp = [(STUD_RADIUS, True), (L - STUD_RADIUS, True)]
-
     _assets.import_blocks(msp.doc)
 
     elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
-    _draw_door_elevation(msp, L, ox, elev_oy, opening_width, wall_height)
+    sp = _draw_door_elevation(msp, L, ox, elev_oy, opening_width,
+                              opening_height, t1_count, t2_count, wall_height)
 
     y_fb = elev_oy + wall_height + _DIM_OFF_2 + _GAP_ELEV_FB
     _draw_flatbar_callout(msp, L, ox, y_fb, sp, cladding=cladding)

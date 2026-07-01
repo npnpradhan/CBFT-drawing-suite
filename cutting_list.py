@@ -132,6 +132,9 @@ def main() -> None:
             )
             draw_fn_kwargs = dict(
                 opening_width=opening_width,
+                opening_height=opening_height,
+                t1_count=t1_count,
+                t2_count=t2_count,
                 wall_height=panel_height,
                 cladding=cladding,
             )
