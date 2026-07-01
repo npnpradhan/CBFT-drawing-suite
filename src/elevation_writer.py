@@ -693,12 +693,12 @@ def _insert_door_plan_block(msp, source_dxf_path: str,
     """
     try:
         import ezdxf as _ezdxf
+        from ezdxf.addons.importer import Importer as _DXFImporter
         src = _ezdxf.readfile(source_dxf_path)
         if 'DP01-Plan' not in src.blocks:
             return
-        importer = _ezdxf.Importer(src, msp.doc)
-        importer.import_blocks(['DP01-Plan'], replace=False)
-        importer.finalize()
+        imp = _DXFImporter(src, msp.doc)
+        imp.import_blocks(['DP01-Plan'])
         msp.add_blockref('DP01-Plan', (ox, oy),
                          dxfattribs={'layer': _L_PANELS})
     except Exception:

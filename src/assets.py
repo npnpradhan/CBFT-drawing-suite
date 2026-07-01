@@ -30,11 +30,17 @@ _TYPEB_STUD_H = 2024.0  # Type B (T2 intermediate stud)
 
 def _assets_path() -> Optional[str]:
     if getattr(sys, "frozen", False):
-        base = sys._MEIPASS
+        candidates = [
+            os.path.join(sys._MEIPASS, "Assets Description.dxf"),
+            os.path.join(os.path.dirname(sys.executable), "Assets Description.dxf"),
+        ]
     else:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    p = os.path.join(base, "Assets Description.dxf")
-    return p if os.path.exists(p) else None
+        candidates = [os.path.join(base, "Assets Description.dxf")]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
 
 
 _cache: Optional[ezdxf.document.Drawing] = None
