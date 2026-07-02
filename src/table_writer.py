@@ -32,7 +32,7 @@ TEXT_VALUE_OFF  = 61    # baseline of centred value TEXT
 TEXT_LABEL_OFF  = 161   # top of TOP_LEFT component MTEXT
 
 # ── Column divider X positions ────────────────────────────────────────────────
-COL_DIV_1  = 1717.9   # COMPONENT | SIZE
+COL_DIV_1  = 2100.0   # COMPONENT | SIZE
 COL_DIV_2  = 2789.1   # SIZE      | LENGTH  (broken on merged rows)
 COL_DIV_3  = 3672.4   # LENGTH    | QTY
 

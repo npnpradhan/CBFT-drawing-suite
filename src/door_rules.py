@@ -34,6 +34,21 @@ DOOR_ROUGH_OPENING_H = 2000
 DOOR_OPENING_HEIGHT  = DOOR_ROUGH_OPENING_H - PLATE_THICKNESS  # 1962 mm
 
 
+def _consolidate(rows: list) -> list:
+    """Merge rows with identical (component, size, length) by summing qty."""
+    seen: dict = {}
+    order: list = []
+    for row in rows:
+        key = (row.component, row.size, row.length)
+        if key in seen:
+            r = seen[key]
+            seen[key] = CuttingRow(r.component, r.size, r.length, r.qty + row.qty, r.unit)
+        else:
+            seen[key] = CuttingRow(row.component, row.size, row.length, row.qty, row.unit)
+            order.append(key)
+    return [seen[k] for k in order]
+
+
 def _stud_height(panel_height: float) -> float:
     return panel_height - 2 * PLATE_THICKNESS
 
@@ -139,7 +154,7 @@ def compute_door_cutting_list(panel_width:    float,
         tadtad = math.ceil(panel_height / TADTAD_STRIP_W)
         rows.append(CuttingRow("TADTAD", f"300 X {panel_width:.0f} MM", "-", tadtad))
 
-    return rows
+    return _consolidate(rows)
 
 
 def compute_window_cutting_list(panel_width:    float,
@@ -199,4 +214,4 @@ def compute_window_cutting_list(panel_width:    float,
         tadtad = math.ceil(panel_height / TADTAD_STRIP_W)
         rows.append(CuttingRow("TADTAD", f"300 X {panel_width:.0f} MM", "-", tadtad))
 
-    return rows
+    return _consolidate(rows)

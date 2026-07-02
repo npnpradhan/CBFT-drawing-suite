@@ -21,6 +21,7 @@ from .table_writer import (
     TABLE_LEFT_X, TABLE_RIGHT_X, TITLE_TOP_Y,
 )
 from . import assets as _assets
+from .layers import setup_layers as _setup_layers
 
 # ── Layer names ───────────────────────────────────────────────────────────────
 _L_ELEV    = "0-S2"
@@ -737,6 +738,7 @@ def draw_door_details(msp: Modelspace,
     ox = origin_x + _panel_left(L)
 
     _assets.import_blocks(msp.doc)
+    _setup_layers(msp.doc)
 
     elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
     sp = _draw_door_elevation(msp, L, ox, elev_oy, opening_width,
@@ -786,6 +788,7 @@ def draw_window_details(msp: Modelspace,
     sp = [(STUD_RADIUS, True), (L - STUD_RADIUS, True)]
 
     _assets.import_blocks(msp.doc)
+    _setup_layers(msp.doc)
 
     elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
     _draw_window_elevation(msp, L, ox, elev_oy, opening_width, opening_height, wall_height)
@@ -851,6 +854,7 @@ def draw_details(msp: Modelspace,
     # Import asset blocks into the document (no-op if already imported or
     # if assets file not present)
     _assets.import_blocks(msp.doc)
+    _setup_layers(msp.doc)
 
     # 1. Elevation
     elev_oy = origin_y + TITLE_TOP_Y + _GAP_TITLE_ELEV
