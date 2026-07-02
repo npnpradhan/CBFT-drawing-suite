@@ -96,16 +96,13 @@ def compute_door_cutting_list(panel_width:    float,
     # Short stud above door header fills the gap between door head and top plate
     short_stud = stud_h - opening_height - PLATE_THICKNESS
 
-    fb = _door_flatbar_length(panel_width, opening_width, panel_height)
-
-    # Hardware counts
-    # hw12: each T1 stud + short stud above door needs 1 J-bolt (bottom) + 1 straight rod (top)
-    hw12 = t1_count + 1
-    # rod10: 1 rod per flat-bar/stud intersection × 2 bars × (t1_count-1 + t2_count) solid studs
-    #        + 2 rods per vertical door jamb × 2 jambs
-    #        (if X bars cross at a common stud, subtract 1)
+    # solid_studs: studs in the solid (non-opening) section of the panel
+    # = all T1 except the far-left opening-side T1, plus all T2
     solid_studs = (t1_count - 1) + t2_count
-    rod10 = 2 * solid_studs + 4
+
+    # hw12: T1 studs need both J-bolt (bottom) and straight rod (top);
+    # short stud above door also gets plate connections only if a solid X-brace section exists
+    hw12 = t1_count + (1 if solid_studs > 1 else 0)
 
     # ── Structural timber & bamboo ────────────────────────────────────────────
     rows = [
@@ -124,15 +121,21 @@ def compute_door_cutting_list(panel_width:    float,
         CuttingRow("DOOR JAMB",         "38X88 MM", f"{opening_height:.0f} MM", 2),  # sides
     ]
 
-    # ── Flat-bar X-brace on solid section ────────────────────────────────────
-    solid_width = panel_width - opening_width
-    if solid_width > FLATBAR_H_TRIM and rod10 > 0:
-        rows += [
-            CuttingRow("FLAT BAR",  f"{FLATBAR_W}x{FLATBAR_T}MM THK.", f"{fb} MM", 2),
-            CuttingRow("THREADED ROD",    "10MM ∅", f"{ROD_10_LENGTH} MM",    rod10),
-            CuttingRow("NUTS",            "10MM ∅", "-",                       2 * rod10),
-            CuttingRow("WASHER", "2.1MM THK. X 25MM∅", "-",                   2 * rod10),
-        ]
+    # ── 10mm rods: flat-bar X-brace (if solid section has ≥2 studs) + door jamb rods ──
+    # rod10: 2 bars × solid_studs intersections + 2 rods per vertical jamb × 2 jambs
+    # if solid_studs ≤ 1: no X-brace, only 4 door-jamb rods
+    if solid_studs > 1:
+        fb = _door_flatbar_length(panel_width, opening_width, panel_height)
+        rod10 = 2 * solid_studs + 4
+        rows.append(CuttingRow("FLAT BAR", f"{FLATBAR_W}x{FLATBAR_T}MM THK.", f"{fb} MM", 2))
+    else:
+        rod10 = 4  # 2 rods per vertical door jamb × 2 jambs
+
+    rows += [
+        CuttingRow("STRAIGHT THREADED ROD", "10MM ∅", f"{ROD_10_LENGTH} MM",    rod10),
+        CuttingRow("NUTS",                  "10MM ∅", "-",                       2 * rod10),
+        CuttingRow("WASHER", "2.1MM THK. X 25MM∅", "-",                         2 * rod10),
+    ]
 
     # ── 12 mm plate-connection hardware ──────────────────────────────────────
     # J-bolt bottom plate + straight rod top plate; 2 nuts + 2 washers per rod,
@@ -184,23 +187,25 @@ def compute_window_cutting_list(panel_width:    float,
         CuttingRow("SIDE JAMB",    "38X88 MM", f"{opening_height:.0f} MM", 2),
     ]
 
-    # Hardware (same pattern as door)
-    hw12 = t1_count + 1
+    # Hardware (same logic as door)
     solid_studs = (t1_count - 1) + t2_count
-    rod10 = 2 * solid_studs + 4  # X-brace intersections + 2 rods per vertical side jamb × 2
+    hw12 = t1_count + (1 if solid_studs > 1 else 0)
+
+    if solid_studs > 1:
+        fb = _door_flatbar_length(panel_width, opening_width, panel_height)
+        rod10 = 2 * solid_studs + 4
+        rows.append(CuttingRow("FLAT BAR", f"{FLATBAR_W}x{FLATBAR_T}MM THK.", f"{fb} MM", 2))
+    else:
+        rod10 = 4  # 2 rods per vertical side jamb × 2 jambs
 
     rows += [
-        CuttingRow("FLAT BAR",
-                   f"{FLATBAR_W}x{FLATBAR_T}MM THK.",
-                   f"{_door_flatbar_length(panel_width, opening_width, panel_height)} MM",
-                   2),
-        CuttingRow("THREADED ROD",      "10MM ∅", f"{ROD_10_LENGTH} MM",    rod10),
-        CuttingRow("NUTS",              "10MM ∅", "-",                       2 * rod10),
-        CuttingRow("WASHER", "2.1MM THK. X 25MM∅",   "-",                   2 * rod10),
-        CuttingRow("THREADED J-BOLT",       "12MM ∅", "300 MM",             hw12),
-        CuttingRow("STRAIGHT THREADED ROD", "12MM ∅", "150 MM",             hw12),
-        CuttingRow("NUTS",                  "12MM ∅", "-",                  3 * hw12),
-        CuttingRow("WASHER", "2.8MM THK. X 35MM∅",   "-",                  3 * hw12),
+        CuttingRow("STRAIGHT THREADED ROD", "10MM ∅", f"{ROD_10_LENGTH} MM",    rod10),
+        CuttingRow("NUTS",                  "10MM ∅", "-",                       2 * rod10),
+        CuttingRow("WASHER", "2.1MM THK. X 25MM∅",   "-",                       2 * rod10),
+        CuttingRow("THREADED J-BOLT",       "12MM ∅", "300 MM",                  hw12),
+        CuttingRow("STRAIGHT THREADED ROD", "12MM ∅", "150 MM",                  hw12),
+        CuttingRow("NUTS",                  "12MM ∅", "-",                       3 * hw12),
+        CuttingRow("WASHER", "2.8MM THK. X 35MM∅",   "-",                       3 * hw12),
     ]
 
     if cladding == "double":
