@@ -543,24 +543,29 @@ def _draw_door_elevation(msp, L: float, ox: float, oy: float,
                 (jamb_rx0, head_y0), (jamb_lx1, head_y0)],
           closed=True, layer=_L_ELEV)
 
-    # Door head jamb (timber, hatched) — spans full jamb-to-jamb width
-    head_w = jamb_rx1 - jamb_lx0
-    _poly(msp, [(jamb_lx0, head_y0), (jamb_rx1, head_y0),
-                (jamb_rx1, head_y1), (jamb_lx0, head_y1)],
+    # Door head jamb — spans stud-centre to stud-centre (= opening_width)
+    head_x0 = ox + door_left_x    # left framing stud centre
+    head_x1 = ox + door_right_x   # right framing stud centre
+    head_w  = head_x1 - head_x0   # = opening_width
+    _poly(msp, [(head_x0, head_y0), (head_x1, head_y0),
+                (head_x1, head_y1), (head_x0, head_y1)],
           closed=True, layer=_L_PLATE)
-    _hatch_rect(msp, jamb_lx0, head_y0, head_w, tp)
+    _hatch_rect(msp, head_x0, head_y0, head_w, tp)
 
-    # Short bamboo stud above head jamb — T2 type (no J-bolt, no mortar infill)
+    # Short bamboo stud above head jamb — T2 type, drawn directly
+    # (block ref would compress too many nodes; use explicit lines at 500 mm pitch)
     short_cx     = ox + (door_left_x + door_right_x) / 2
-    short_height = H - tp - opening_height - tp   # stud zone − opening − head jamb
+    short_height = H - tp - opening_height - tp
     if short_height > 0:
-        placed = _assets.add_type_b_stud(msp, short_cx, head_y1,
-                                         stud_height=short_height, layer=_L_STUD)
-        if not placed:
-            sr = STUD_RADIUS
-            _poly(msp, [(short_cx-sr, head_y1), (short_cx+sr, head_y1),
-                        (short_cx+sr, oy+H-tp),  (short_cx-sr, oy+H-tp)],
-                  closed=True, layer=_L_STUD)
+        sr   = STUD_RADIUS
+        x_l, x_r = short_cx - sr, short_cx + sr
+        y_b, y_t = head_y1, head_y1 + short_height
+        _poly(msp, [(x_l, y_b), (x_r, y_b), (x_r, y_t), (x_l, y_t)],
+              closed=True, layer="0-S2")
+        n_nodes = max(1, int(short_height / 500))
+        for i in range(1, n_nodes + 1):
+            y_node = y_b + i * short_height / (n_nodes + 1)
+            _line(msp, (x_l, y_node), (x_r, y_node), "0-S1")
 
     # ── Flat-bar X-brace — solid section only ────────────────────────────────
     right_end_x = stud_positions[-1][0]
