@@ -33,7 +33,7 @@ from pathlib import Path
 
 import ezdxf
 
-from src.wall_parser       import parse_wall_plan
+from src.wall_parser       import parse_wall_plan, parse_multi_plan_dxf
 from src.cutting_rules     import compute_cutting_list
 from src.door_parser       import is_door_window_plan, parse_door_window_plan
 from src.door_rules        import (compute_door_cutting_list, compute_window_cutting_list,
@@ -100,6 +100,46 @@ def main() -> None:
     setup_layers(doc)
     msp = doc.modelspace()
     panel_id = plan_path.stem.replace("_plan", "").upper()
+
+    # ── Multi-plan DXF: separate cutting list per plan block ─────────────────
+    multi_plans = parse_multi_plan_dxf(str(plan_path))
+    if multi_plans:
+        from src.table_writer import TABLE_RIGHT_X as _TRX
+        _STRIDE = _TRX + 1000   # ~5245 mm horizontal gap between panels
+
+        panel_height = args.height if args.height is not None else 2100.0
+        all_rows = {}
+
+        for i, plan in enumerate(multi_plans):
+            ox     = i * _STRIDE
+            pid    = plan["panel_id"]
+            L      = plan["wall_length"]
+            t1     = plan["t1_count"]
+            t2     = plan["t2_count"]
+            clad   = args.cladding or plan["cladding"]
+
+            print(f"Panel {pid}: L={L:.0f} mm  T1={t1}  T2={t2}  cladding={clad}")
+
+            rows = compute_cutting_list(L, t1, t2, cladding=clad,
+                                        wall_height=panel_height)
+            if args.verbose:
+                _print_verbose(rows)
+
+            write_cutting_table(msp, rows, origin_x=ox, origin_y=0, panel_id=pid)
+            draw_details(msp, L, t1, t2, origin_x=ox, origin_y=0,
+                         wall_height=panel_height,
+                         stud_positions=plan["stud_positions"], cladding=clad)
+            all_rows[pid] = rows
+
+        doc.saveas(out_path)
+        print(f"DXF saved  : {out_path}  ({len(multi_plans)} panels)")
+
+        if args.csv:
+            for pid, rows in all_rows.items():
+                csv_path = out_path.with_name(f"{out_path.stem}_{pid}.csv")
+                write_csv(rows, csv_path)
+
+        return
 
     # ── Detect panel type and parse ───────────────────────────────────────────
     if is_door_window_plan(str(plan_path)):

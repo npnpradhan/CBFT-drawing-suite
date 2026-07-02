@@ -5,13 +5,21 @@ Parse a CBFT wall plan DXF and extract wall parameters:
   - t2_count        (intermediate studs, block bpns1)
   - stud_positions  list of (relative_x, is_t1) sorted left-to-right,
                     where relative_x is measured from the wall's left edge
+
+Multi-plan DXFs (multiple panel blocks in modelspace on the AR-Panels layer)
+are handled by parse_multi_plan_dxf(), which returns one dict per plan block.
 """
 
 import ezdxf
+from typing import Optional
 
 # Block names that represent studs in the panel block
 _T1_BLOCKS = {"bps1"}    # end / corner studs (solid bamboo)
 _T2_BLOCKS = {"bpns1"}   # intermediate studs (non-structural / hollow centre)
+
+# Layers used for the wall-outline polyline in plan view
+_PLAN_OUTLINE_LAYERS = {"VP", "AR-Timber Plate"}
+_MIN_PLAN_WIDTH = 200.0   # ignore polys narrower than this (stud cross-sections, etc.)
 
 
 def _get_wall_length(msp) -> float:
@@ -242,3 +250,98 @@ def parse_wall_plan(dxf_path: str) -> dict:
         "cladding":       cladding,
         "source_file":    dxf_path,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-plan support
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _block_wall_length(blk) -> Optional[float]:
+    """
+    Return the wall length (mm) from the widest LWPOLYLINE on VP or
+    AR-Timber Plate layers inside a block definition.
+
+    Ignores polys narrower than _MIN_PLAN_WIDTH (stud cross-sections, etc.).
+    """
+    best: Optional[float] = None
+    for e in blk:
+        if e.dxftype() != "LWPOLYLINE":
+            continue
+        if e.dxf.layer not in _PLAN_OUTLINE_LAYERS:
+            continue
+        pts = list(e.get_points("xy"))
+        if len(pts) < 2:
+            continue
+        xs = [p[0] for p in pts]
+        w  = max(xs) - min(xs)
+        if w > _MIN_PLAN_WIDTH and (best is None or w > best):
+            best = w
+    return round(best, 1) if best is not None else None
+
+
+def _panel_id_from_block_name(block_name: str) -> str:
+    """Strip common plan suffixes to produce a short panel ID."""
+    pid = block_name
+    for suffix in ("-Plan", "-plan", "_Plan", "_plan"):
+        if pid.endswith(suffix):
+            pid = pid[: -len(suffix)]
+            break
+    return pid
+
+
+def parse_multi_plan_dxf(dxf_path: str) -> list:
+    """
+    Detect and parse multiple plan blocks in a DXF file.
+
+    Scans modelspace for INSERT entities.  Any block that contains bps1 / bpns1
+    stud inserts AND a recognisable wall-outline polyline is treated as one panel.
+
+    Returns
+    -------
+    A list of dicts, one per detected plan block, with the same keys as
+    parse_wall_plan() (wall_length, t1_count, t2_count, stud_positions,
+    cladding, source_file) plus 'panel_id' and 'block_name'.
+
+    Returns an empty list when no multi-plan structure is found (single-plan
+    DXF, flat drawing, or file with fewer than 2 detectable panels).
+    """
+    doc = ezdxf.readfile(dxf_path)
+    msp = doc.modelspace()
+
+    plans = []
+    for e in msp:
+        if e.dxftype() != "INSERT":
+            continue
+        block_name = e.dxf.name
+        if block_name not in doc.blocks:
+            continue
+        blk = doc.blocks[block_name]
+
+        t1 = sum(
+            1 for x in blk
+            if x.dxftype() == "INSERT" and x.dxf.name in _T1_BLOCKS
+        )
+        t2 = sum(
+            1 for x in blk
+            if x.dxftype() == "INSERT" and x.dxf.name in _T2_BLOCKS
+        )
+        if t1 + t2 == 0:
+            continue
+
+        wall_length = _block_wall_length(blk)
+        if wall_length is None:
+            continue
+
+        plans.append({
+            "panel_id":       _panel_id_from_block_name(block_name),
+            "block_name":     block_name,
+            "wall_length":    wall_length,
+            "t1_count":       t1,
+            "t2_count":       t2,
+            "stud_positions": [],   # even-spacing fallback used by draw_details
+            "cladding":       "single",
+            "source_file":    dxf_path,
+        })
+
+    # Only report as multi-plan when at least 2 panels were found
+    return plans if len(plans) >= 2 else []
