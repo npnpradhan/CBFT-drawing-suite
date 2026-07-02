@@ -98,22 +98,25 @@ def add_blockref(msp, block_name: str,
     return True
 
 
+_NODE_PITCH    = 355.0    # bamboo internode pitch (mm)
+_JBOLT_REF_Y   = 262.5   # y of right-rod top within A$C62F95397 block
+_JBOLT_YSCALE  = 2.0     # scale so J-bolt extends ~525 mm past stud top (beyond first node at 355 mm)
+_FOUND_LINE_H  = 600.0   # foundation embedded-rebar line height (mm)
+_MORTAR_ZONES  = 2       # number of internodes to fill with mortar at each end
+
+
 def add_n2n_stud(msp, stud_cx: float, stud_bottom_y: float,
                  stud_height: float = _N2N_STUD_H,
                  layer: str = "AR-Bamboo Stud") -> bool:
     """
-    Draw a T1 end/corner stud elevation from its components:
-      (a) Bamboo body rectangle   – layer 0-S2  (LWPOLYLINE, 100 mm wide)
-      (b) Cement mortar fill      – layer .     (DOTS hatch)
-      (c) Bamboo node cross-hatch – layer 0-S1  (ANSI31, 45 ° and 135 °)
-      (d) Top J-bolt connection   – layer Bolts (A$C62F95397 block)
-      (e) Foundation connection   – layer Bolts (hidden line, 600 mm up)
-
-    Geometry derived from T1_stud_components.dxf reference:
-      J-bolt block right-rod top (x=25, y=262.5) aligns to (cx, y_top).
-      Foundation line rises 600 mm from stud bottom at centre-line x.
+    Draw a T1 end/corner stud elevation:
+      (a) Bamboo body rectangle   – layer 0-S2
+      (b) Cement mortar fill      – layer .     (DOTS, bottom 2 + top 2 internodes only)
+      (c) Bamboo node double-lines– layer 0-S1  (_USER hatch, 355 mm pitch)
+      (d) Top J-bolt connection   – layer Bolts (A$C62F95397 block, scaled to reach past 1st node)
+      (e) Foundation embedded rod – layer Bolts (600 mm line from stud bottom)
     """
-    sr  = 50.0          # half-width (stud is 100 mm wide)
+    sr  = 50.0
     x_l = stud_cx - sr
     x_r = stud_cx + sr
     y_b = stud_bottom_y
@@ -123,28 +126,41 @@ def add_n2n_stud(msp, stud_cx: float, stud_bottom_y: float,
     # (a) Bamboo body rectangle
     msp.add_lwpolyline(rect, close=True, dxfattribs={"layer": "0-S2"})
 
-    # (b) Cement mortar fill
-    h_fill = msp.add_hatch(dxfattribs={"layer": "."})
-    h_fill.set_pattern_fill("DOTS", scale=20.0)
-    h_fill.paths.add_polyline_path(rect, is_closed=True)
+    # (b) Cement mortar fill — only at the internode zones containing hardware
+    #     bottom zone: 2 internodes (covers 600 mm foundation rod)
+    #     top zone:    2 internodes (covers J-bolt depth)
+    mortar_depth = _MORTAR_ZONES * _NODE_PITCH   # 710 mm
+    y_bot_hi = min(y_b + mortar_depth, y_t)
+    y_top_lo = max(y_t - mortar_depth, y_b)
+    # avoid double-filling when stud is very short (zones overlap)
+    if y_top_lo < y_bot_hi:
+        y_top_lo = y_bot_hi
 
-    # (c) Bamboo node double-lines — matches Type B pattern (2×_USER, 10 mm gap, 355 mm pitch)
+    for (z_b, z_t) in [(y_b, y_bot_hi), (y_top_lo, y_t)]:
+        if z_t > z_b:
+            zone = [(x_l, z_b), (x_r, z_b), (x_r, z_t), (x_l, z_t)]
+            h = msp.add_hatch(dxfattribs={"layer": "."})
+            h.set_pattern_fill("DOTS", scale=20.0)
+            h.paths.add_polyline_path(zone, is_closed=True)
+
+    # (c) Bamboo node double-lines over full stud height
     for base_y in [0.0, 10.0]:
         h_node = msp.add_hatch(dxfattribs={"layer": "0-S1"})
-        h_node.set_pattern_fill("_USER", definition=[(0.0, (0, base_y), (0, 355.0), [])])
+        h_node.set_pattern_fill("_USER", definition=[(0.0, (0, base_y), (0, _NODE_PITCH), [])])
         h_node.paths.add_polyline_path(rect, is_closed=True)
 
-    # (d) Top J-bolt: INSERT so right rod (x=25 in block, y=262.5 top) lands at (cx, y_t)
+    # (d) Top J-bolt: scale yscale so hook extends past first node (~525 mm deep)
+    #     Insert formula: INSERT.y = y_t - _JBOLT_REF_Y * yscale
     if has_block(msp.doc, "A$C62F95397"):
         msp.add_blockref(
             "A$C62F95397",
-            (stud_cx - 25.0, y_t - 262.5),
-            dxfattribs={"layer": "Bolts"},
+            (stud_cx - 25.0, y_t - _JBOLT_REF_Y * _JBOLT_YSCALE),
+            dxfattribs={"layer": "Bolts", "yscale": _JBOLT_YSCALE},
         )
 
-    # (e) Foundation connection: 600 mm hidden line up from stud bottom
+    # (e) Foundation embedded rod: 600 mm line from stud bottom
     msp.add_line(
-        (stud_cx, y_b), (stud_cx, y_b + 600.0),
+        (stud_cx, y_b), (stud_cx, y_b + _FOUND_LINE_H),
         dxfattribs={"layer": "Bolts"},
     )
     return True
