@@ -99,10 +99,13 @@ def compute_door_cutting_list(panel_width:    float,
     fb = _door_flatbar_length(panel_width, opening_width, panel_height)
 
     # Hardware counts
-    # hw12 = T1 studs + short stud above door (all need top & bottom plate connections)
+    # hw12: each T1 stud + short stud above door needs 1 J-bolt (bottom) + 1 straight rod (top)
     hw12 = t1_count + 1
-    # rod10 = 2 rods per stud × (T1 + T2 + 1 short stud)
-    rod10 = 2 * (t1_count + t2_count + 1)
+    # rod10: 1 rod per flat-bar/stud intersection × 2 bars × (t1_count-1 + t2_count) solid studs
+    #        + 2 rods per vertical door jamb × 2 jambs
+    #        (if X bars cross at a common stud, subtract 1)
+    solid_studs = (t1_count - 1) + t2_count
+    rod10 = 2 * solid_studs + 4
 
     # ── Structural timber & bamboo ────────────────────────────────────────────
     rows = [
@@ -182,8 +185,9 @@ def compute_window_cutting_list(panel_width:    float,
     ]
 
     # Hardware (same pattern as door)
-    hw12  = t1_count + 1
-    rod10 = 2 * (t1_count + t2_count + 1)
+    hw12 = t1_count + 1
+    solid_studs = (t1_count - 1) + t2_count
+    rod10 = 2 * solid_studs + 4  # X-brace intersections + 2 rods per vertical side jamb × 2
 
     rows += [
         CuttingRow("FLAT BAR",
