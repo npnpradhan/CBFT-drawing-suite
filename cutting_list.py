@@ -107,28 +107,74 @@ def main() -> None:
         from src.table_writer import TABLE_RIGHT_X as _TRX
         _STRIDE = _TRX + 1000   # ~5245 mm horizontal gap between panels
 
-        panel_height = args.height if args.height is not None else 2100.0
         all_rows = {}
 
         for i, plan in enumerate(multi_plans):
-            ox     = i * _STRIDE
-            pid    = plan["panel_id"]
-            L      = plan["wall_length"]
-            t1     = plan["t1_count"]
-            t2     = plan["t2_count"]
-            clad   = args.cladding or plan["cladding"]
+            ox          = i * _STRIDE
+            pid         = plan["panel_id"]
+            ptype       = plan["panel_type"]
+            t1          = plan["t1_count"]
+            t2          = plan["t2_count"]
+            clad        = args.cladding or plan["cladding"]
 
-            print(f"Panel {pid}: L={L:.0f} mm  T1={t1}  T2={t2}  cladding={clad}")
+            if ptype == "wall":
+                L            = plan["wall_length"]
+                panel_height = args.height if args.height is not None else 2100.0
+                print(f"Panel {pid} [WALL]  : L={L:.0f} mm  T1={t1}  T2={t2}  cladding={clad}")
+                rows = compute_cutting_list(L, t1, t2, cladding=clad,
+                                            wall_height=panel_height)
+                if args.verbose:
+                    _print_verbose(rows)
+                write_cutting_table(msp, rows, origin_x=ox, origin_y=0, panel_id=pid)
+                draw_details(msp, L, t1, t2, origin_x=ox, origin_y=0,
+                             wall_height=panel_height,
+                             stud_positions=plan["stud_positions"], cladding=clad)
 
-            rows = compute_cutting_list(L, t1, t2, cladding=clad,
-                                        wall_height=panel_height)
-            if args.verbose:
-                _print_verbose(rows)
+            elif ptype == "door":
+                pw           = plan["panel_width"]
+                ow           = plan["opening_width"]
+                panel_height = args.height if args.height is not None else DOOR_WALL_HEIGHT
+                oh           = args.opening_height if args.opening_height is not None \
+                               else DOOR_OPENING_HEIGHT
+                print(f"Panel {pid} [DOOR]  : W={pw:.0f} mm  opening={ow:.0f} mm"
+                      f"  T1={t1}  T2={t2}  cladding={clad}")
+                rows = compute_door_cutting_list(
+                    pw, ow, oh, t1_count=t1, t2_count=t2,
+                    cladding=clad, panel_height=panel_height,
+                )
+                if args.verbose:
+                    _print_verbose(rows)
+                write_cutting_table(msp, rows, origin_x=ox, origin_y=0, panel_id=pid)
+                draw_door_details(msp, pw, origin_x=ox, origin_y=0,
+                                  opening_width=ow, opening_height=oh,
+                                  t1_count=t1, t2_count=t2,
+                                  wall_height=panel_height, cladding=clad,
+                                  source_dxf=str(plan_path))
 
-            write_cutting_table(msp, rows, origin_x=ox, origin_y=0, panel_id=pid)
-            draw_details(msp, L, t1, t2, origin_x=ox, origin_y=0,
-                         wall_height=panel_height,
-                         stud_positions=plan["stud_positions"], cladding=clad)
+            else:  # window
+                pw           = plan["panel_width"]
+                ow           = plan["opening_width"]
+                panel_height = args.height if args.height is not None else DOOR_WALL_HEIGHT
+                if args.opening_height is None:
+                    print(
+                        f"ERROR: Panel {pid} is a window panel — "
+                        "--opening-height is required.", file=sys.stderr
+                    )
+                    sys.exit(1)
+                oh = args.opening_height
+                print(f"Panel {pid} [WINDOW]: W={pw:.0f} mm  opening={ow:.0f} mm"
+                      f"  T1={t1}  T2={t2}  cladding={clad}")
+                rows = compute_window_cutting_list(
+                    pw, ow, oh, t1_count=t1, t2_count=t2,
+                    cladding=clad, panel_height=panel_height,
+                )
+                if args.verbose:
+                    _print_verbose(rows)
+                write_cutting_table(msp, rows, origin_x=ox, origin_y=0, panel_id=pid)
+                draw_window_details(msp, pw, origin_x=ox, origin_y=0,
+                                    opening_width=ow, opening_height=oh,
+                                    wall_height=panel_height, cladding=clad)
+
             all_rows[pid] = rows
 
         doc.saveas(out_path)

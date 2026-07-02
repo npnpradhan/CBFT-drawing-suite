@@ -279,6 +279,84 @@ def _block_wall_length(blk) -> Optional[float]:
     return round(best, 1) if best is not None else None
 
 
+def _block_panel_width(blk) -> Optional[float]:
+    """
+    Return the total panel width (mm) as the combined x-range of all
+    LWPOLYLINE entities in the block.  Used for door/window panels where
+    the VP poly covers only the solid section.
+    """
+    all_xs = []
+    for e in blk:
+        if e.dxftype() != "LWPOLYLINE":
+            continue
+        pts = list(e.get_points("xy"))
+        all_xs += [p[0] for p in pts]
+    if not all_xs:
+        return None
+    w = max(all_xs) - min(all_xs)
+    return round(w, 1) if w > _MIN_PLAN_WIDTH else None
+
+
+def _block_panel_type(blk) -> str:
+    """
+    Determine panel type from block contents:
+      - AR-Jambs polys present + ARC entity   → "door"
+      - AR-Jambs polys present + 3 lines between jambs → "window"
+      - AR-Jambs polys present (ambiguous)    → "door"  (ARC is primary signal)
+      - No AR-Jambs                           → "wall"
+
+    Door signal  : door-swing ARC between the two vertical jamb rectangles.
+    Window signal: 3 horizontal lines between the jamb rectangles (sill + glazing lines).
+    """
+    jamb_polys = [
+        e for e in blk
+        if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "AR-Jambs"
+    ]
+    if not jamb_polys:
+        return "wall"
+
+    # ARC present → door swing → door panel
+    for e in blk:
+        if e.dxftype() == "ARC":
+            return "door"
+
+    # Count lines that fall between the two jamb rectangles (x-range)
+    if len(jamb_polys) >= 2:
+        jamb_polys.sort(key=lambda p: min(pt[0] for pt in p.get_points("xy")))
+        left_inner  = max(pt[0] for pt in jamb_polys[0].get_points("xy"))
+        right_inner = min(pt[0] for pt in jamb_polys[-1].get_points("xy"))
+        lines_between = sum(
+            1 for e in blk
+            if e.dxftype() == "LINE"
+            and left_inner - 5 <= min(e.dxf.start.x, e.dxf.end.x)
+            and max(e.dxf.start.x, e.dxf.end.x) <= right_inner + 5
+        )
+        if lines_between >= 3:
+            return "window"
+
+    return "door"  # AR-Jambs present but no window signal → door
+
+
+def _block_opening_width(blk) -> Optional[float]:
+    """
+    Return the clear opening width (mm) from AR-Jambs polys.
+
+    The two jamb rectangles are the vertical timber jambs shown in plan
+    cross-section.  The clear opening is the gap between their inner faces.
+    """
+    jamb_polys = [
+        e for e in blk
+        if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "AR-Jambs"
+    ]
+    if len(jamb_polys) < 2:
+        return None
+    jamb_polys.sort(key=lambda p: min(pt[0] for pt in p.get_points("xy")))
+    left_inner  = max(pt[0] for pt in jamb_polys[0].get_points("xy"))
+    right_inner = min(pt[0] for pt in jamb_polys[-1].get_points("xy"))
+    w = right_inner - left_inner
+    return round(w, 1) if w > 50 else None
+
+
 def _panel_id_from_block_name(block_name: str) -> str:
     """Strip common plan suffixes to produce a short panel ID."""
     pid = block_name
@@ -296,14 +374,20 @@ def parse_multi_plan_dxf(dxf_path: str) -> list:
     Scans modelspace for INSERT entities.  Any block that contains bps1 / bpns1
     stud inserts AND a recognisable wall-outline polyline is treated as one panel.
 
+    Panel type is auto-detected per block:
+      "wall"   — no AR-Jambs layer polys
+      "door"   — AR-Jambs polys + ARC entity (door swing)
+      "window" — AR-Jambs polys + 3 lines between jambs (glazing lines)
+
     Returns
     -------
-    A list of dicts, one per detected plan block, with the same keys as
-    parse_wall_plan() (wall_length, t1_count, t2_count, stud_positions,
-    cladding, source_file) plus 'panel_id' and 'block_name'.
+    A list of dicts, one per detected plan block.  Common keys:
+        panel_id, block_name, panel_type, t1_count, t2_count,
+        cladding, stud_positions, source_file
+    Wall panels add:   wall_length
+    Door/window add:   panel_width, opening_width
 
-    Returns an empty list when no multi-plan structure is found (single-plan
-    DXF, flat drawing, or file with fewer than 2 detectable panels).
+    Returns an empty list when fewer than 2 detectable panels are found.
     """
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
@@ -328,20 +412,36 @@ def parse_multi_plan_dxf(dxf_path: str) -> list:
         if t1 + t2 == 0:
             continue
 
-        wall_length = _block_wall_length(blk)
-        if wall_length is None:
-            continue
+        panel_type = _block_panel_type(blk)
 
-        plans.append({
+        plan = {
             "panel_id":       _panel_id_from_block_name(block_name),
             "block_name":     block_name,
-            "wall_length":    wall_length,
+            "panel_type":     panel_type,
             "t1_count":       t1,
             "t2_count":       t2,
-            "stud_positions": [],   # even-spacing fallback used by draw_details
+            "stud_positions": [],
             "cladding":       "single",
             "source_file":    dxf_path,
-        })
+        }
+
+        if panel_type == "wall":
+            wall_length = _block_wall_length(blk)
+            if wall_length is None:
+                continue
+            plan["wall_length"] = wall_length
+        else:
+            # door or window: panel_width = full combined x-extent
+            panel_width = _block_panel_width(blk)
+            if panel_width is None:
+                continue
+            opening_width = _block_opening_width(blk)
+            if opening_width is None:
+                continue
+            plan["panel_width"]   = panel_width
+            plan["opening_width"] = opening_width
+
+        plans.append(plan)
 
     # Only report as multi-plan when at least 2 panels were found
     return plans if len(plans) >= 2 else []
