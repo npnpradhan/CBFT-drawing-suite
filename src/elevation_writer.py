@@ -565,7 +565,8 @@ def _draw_door_elevation(msp, L: float, ox: float, oy: float,
         n_nodes = max(1, int(short_height / 500))
         for i in range(1, n_nodes + 1):
             y_node = y_b + i * short_height / (n_nodes + 1)
-            _line(msp, (x_l, y_node), (x_r, y_node), "0-S1")
+            _line(msp, (x_l, y_node),      (x_r, y_node),      "0-S1")
+            _line(msp, (x_l, y_node + 10), (x_r, y_node + 10), "0-S1")
 
     # ── Flat-bar X-brace — solid section only ────────────────────────────────
     right_end_x = stud_positions[-1][0]

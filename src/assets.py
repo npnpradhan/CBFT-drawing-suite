@@ -128,10 +128,11 @@ def add_n2n_stud(msp, stud_cx: float, stud_bottom_y: float,
     h_fill.set_pattern_fill("DOTS", scale=20.0)
     h_fill.paths.add_polyline_path(rect, is_closed=True)
 
-    # (c) Bamboo node lines: horizontal solid lines at 365 mm pitch (_USER pattern)
-    h_node = msp.add_hatch(dxfattribs={"layer": "0-S1"})
-    h_node.set_pattern_fill("_USER", definition=[(0.0, (0, 0), (0, 365.0), [])])
-    h_node.paths.add_polyline_path(rect, is_closed=True)
+    # (c) Bamboo node double-lines — matches Type B pattern (2×_USER, 10 mm gap, 355 mm pitch)
+    for base_y in [0.0, 10.0]:
+        h_node = msp.add_hatch(dxfattribs={"layer": "0-S1"})
+        h_node.set_pattern_fill("_USER", definition=[(0.0, (0, base_y), (0, 355.0), [])])
+        h_node.paths.add_polyline_path(rect, is_closed=True)
 
     # (d) Top J-bolt: INSERT so right rod (x=25 in block, y=262.5 top) lands at (cx, y_t)
     if has_block(msp.doc, "A$C62F95397"):
