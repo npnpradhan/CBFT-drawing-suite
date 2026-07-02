@@ -155,7 +155,7 @@ def compute_cutting_list(wall_length: float,
     else:   # "single" — default
         tadtad_count = math.ceil(wall_height / TADTAD_STRIP_W)
         rows.append(
-            CuttingRow("TADTAD", f"300 X {L:.0f} MM", "-", tadtad_count)
+            CuttingRow("TADTAD", f"300x{L:.0f} MM", "-", tadtad_count)
         )
 
     return rows

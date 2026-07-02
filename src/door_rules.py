@@ -99,10 +99,10 @@ def compute_door_cutting_list(panel_width:    float,
     fb = _door_flatbar_length(panel_width, opening_width, panel_height)
 
     # Hardware counts
-    # hw12 = T1 studs + 1 short stud (both need top-plate & bottom-plate connections)
+    # hw12 = T1 studs + short stud above door (all need top & bottom plate connections)
     hw12 = t1_count + 1
-    # 10mm flat-bar rods: all studs in the SOLID section (exclude 1 T1 at door-left)
-    rod10 = 2 * (t1_count + t2_count - 1)
+    # rod10 = 2 rods per stud × (T1 + T2 + 1 short stud)
+    rod10 = 2 * (t1_count + t2_count + 1)
 
     # ── Structural timber & bamboo ────────────────────────────────────────────
     rows = [
@@ -121,14 +121,7 @@ def compute_door_cutting_list(panel_width:    float,
         CuttingRow("DOOR JAMB",         "38X88 MM", f"{opening_height:.0f} MM", 2),  # sides
     ]
 
-    # ── 12 mm top-plate hardware (T1 studs + short stud) ─────────────────────
-    rows += [
-        CuttingRow("STRAIGHT THREADED ROD", "12MM ∅", "150 MM",             hw12),
-        CuttingRow("NUTS",                  "12MM ∅", "-",                  2 * hw12),
-        CuttingRow("WASHER", "2.1MM THK. X 25MM∅",   "-",                  2 * hw12),
-    ]
-
-    # ── Flat-bar X-brace on solid section (only when solid section exists) ──────
+    # ── Flat-bar X-brace on solid section ────────────────────────────────────
     solid_width = panel_width - opening_width
     if solid_width > FLATBAR_H_TRIM and rod10 > 0:
         rows += [
@@ -138,11 +131,12 @@ def compute_door_cutting_list(panel_width:    float,
             CuttingRow("WASHER", "2.1MM THK. X 25MM∅", "-",                   2 * rod10),
         ]
 
-    # ── 12 mm bottom-plate hardware (T1 studs + short stud) ──────────────────
+    # ── 12 mm plate-connection hardware ──────────────────────────────────────
+    # J-bolt bottom plate + straight rod top plate; 2 nuts + 2 washers per rod,
+    # 1 nut + 1 washer per J-bolt → 3 × hw12 total each
     rows += [
         CuttingRow("THREADED J-BOLT",       "12MM ∅", "300 MM",             hw12),
         CuttingRow("STRAIGHT THREADED ROD", "12MM ∅", "150 MM",             hw12),
-        # 1 nut per J-bolt + 2 nuts per rod = 3 × hw12
         CuttingRow("NUTS",                  "12MM ∅", "-",                  3 * hw12),
         CuttingRow("WASHER", "2.8MM THK. X 35MM∅",   "-",                  3 * hw12),
     ]
@@ -152,7 +146,7 @@ def compute_door_cutting_list(panel_width:    float,
         rows.append(CuttingRow("RIBLATH", f"600 X {panel_width:.0f} MM", "-", 5))
     else:
         tadtad = math.ceil(panel_height / TADTAD_STRIP_W)
-        rows.append(CuttingRow("TADTAD", f"300 X {panel_width:.0f} MM", "-", tadtad))
+        rows.append(CuttingRow("TADTAD", f"300x{panel_width:.0f} MM", "-", tadtad))
 
     return _consolidate(rows)
 
@@ -189,12 +183,9 @@ def compute_window_cutting_list(panel_width:    float,
 
     # Hardware (same pattern as door)
     hw12  = t1_count + 1
-    rod10 = 2 * (t1_count + t2_count - 1)
+    rod10 = 2 * (t1_count + t2_count + 1)
 
     rows += [
-        CuttingRow("STRAIGHT THREADED ROD", "12MM ∅", "150 MM",             hw12),
-        CuttingRow("NUTS",                  "12MM ∅", "-",                  2 * hw12),
-        CuttingRow("WASHER", "2.1MM THK. X 25MM∅",   "-",                  2 * hw12),
         CuttingRow("FLAT BAR",
                    f"{FLATBAR_W}x{FLATBAR_T}MM THK.",
                    f"{_door_flatbar_length(panel_width, opening_width, panel_height)} MM",
@@ -212,6 +203,6 @@ def compute_window_cutting_list(panel_width:    float,
         rows.append(CuttingRow("RIBLATH", f"600 X {panel_width:.0f} MM", "-", 5))
     else:
         tadtad = math.ceil(panel_height / TADTAD_STRIP_W)
-        rows.append(CuttingRow("TADTAD", f"300 X {panel_width:.0f} MM", "-", tadtad))
+        rows.append(CuttingRow("TADTAD", f"300x{panel_width:.0f} MM", "-", tadtad))
 
     return _consolidate(rows)
