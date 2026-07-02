@@ -327,25 +327,24 @@ def _draw_flatbar_callout(msp, L, ox, oy, stud_positions, cladding="single",
               closed=True, layer=_L_PLATE)
         _hatch_rect(msp, jamb_rx0, y_panel_lo, tp_jamb, pd)
 
-        # ── Door swing symbol below the front face ────────────────────────────
-        # Hinge at inner face of left jamb, at the panel front face (oy).
-        # The door swings OUTWARD (downward, -Y direction in drawing).
-        _DOOR_LEAF_T = 50   # door leaf thickness mm
-        hx, hy = jamb_lx1, oy
+        # ── Door swing symbol above the panel body (flush with back face) ───────
+        # Hinge at inner face of left jamb, flush with top/back face of panel.
+        # Door swings outward (+Y direction, above the wall in plan view). Red.
+        _DOOR_LEAF_T = 50
+        _door_attr = {"layer": _L_ELEV, "color": 1}  # color 1 = red
+        hx, hy = jamb_lx1, y_panel_hi
 
-        # Line: door in closed position (spanning clear opening horizontally)
-        _line(msp, (hx, hy), (hx + clear_w, hy), _L_ELEV)
+        # Closed position: horizontal line across the clear opening
+        msp.add_line((hx, hy), (hx + clear_w, hy), dxfattribs=_door_attr)
 
-        # Rectangle: door leaf in open position (swung 90° outward, pointing -Y)
-        _poly(msp, [(hx,             hy),
-                    (hx,             hy - clear_w),
-                    (hx + _DOOR_LEAF_T, hy - clear_w),
-                    (hx + _DOOR_LEAF_T, hy)],
-              closed=True, layer=_L_ELEV)
+        # Open position: door leaf rectangle pointing upward (+Y)
+        msp.add_lwpolyline(
+            [(hx, hy), (hx + _DOOR_LEAF_T, hy),
+             (hx + _DOOR_LEAF_T, hy + clear_w), (hx, hy + clear_w)],
+            close=True, dxfattribs=_door_attr)
 
-        # Arc: swing path of door tip — CCW from 270° (open, -Y) to 360° (closed, +X)
-        msp.add_arc((hx, hy), clear_w, 270, 360,
-                    dxfattribs={"layer": _L_ELEV})
+        # Arc: swing path of door tip — CCW from 0° (closed, +X) to 90° (open, +Y)
+        msp.add_arc((hx, hy), clear_w, 0, 90, dxfattribs=_door_attr)
 
     # Back plaster strip (double-sided only — opposite face)
     if double:
